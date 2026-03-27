@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package first_rpc.rpc;
+
+message HealthCheckRequest {
+  string token = 1;
+}
+
+message PathRequest {
+  string token = 1;
+  string path = 2;
+}
+
+message ReadFileRequest {
+  string token = 1;
+  string path = 2;
+  uint64 max_bytes = 3;
+}
+
+message TailFileRequest {
+  string token = 1;
+  string path = 2;
+  uint64 lines = 3;
+  uint64 max_bytes = 4;
+}
+
+message GrepFileRequest {
+  string token = 1;
+  string path = 2;
+  string needle = 3;
+  uint64 max_matches = 4;
+  uint64 max_line_length = 5;
+}
+
+message ActionReply {
+  bool ok = 1;
+  string action = 2;
+  string summary = 3;
+  map<string, string> data = 4;
+  string error = 5;
+  uint64 duration_ms = 6;
+}
+
+service RemoteOps {
+  rpc HealthCheck(HealthCheckRequest) returns (ActionReply);
+  rpc ListDir(PathRequest) returns (ActionReply);
+  rpc ReadFile(ReadFileRequest) returns (ActionReply);
+  rpc TailFile(TailFileRequest) returns (ActionReply);
+  rpc GrepFile(GrepFileRequest) returns (ActionReply);
+}

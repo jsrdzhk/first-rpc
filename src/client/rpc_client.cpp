@@ -1,0 +1,70 @@
+#include "first_rpc/client/rpc_client.hpp"
+
+#include <utility>
+
+#include <grpcpp/client_context.h>
+#include <grpcpp/create_channel.h>
+#include <grpcpp/security/credentials.h>
+
+namespace first_rpc {
+
+RpcClient::RpcClient(std::string host, std::uint16_t port)
+    : channel_(grpc::CreateChannel(host + ":" + std::to_string(port), grpc::InsecureChannelCredentials())),
+      stub_(rpc::RemoteOps::NewStub(channel_)) {}
+
+template <typename Request, typename Method>
+rpc::ActionReply RpcClient::Invoke(const Request& request, Method method) const {
+    grpc::ClientContext context;
+    rpc::ActionReply reply;
+    const grpc::Status status = (stub_.get()->*method)(&context, request, &reply);
+    if (!status.ok()) {
+        reply.set_ok(false);
+        reply.set_summary("rpc call failed");
+        reply.set_error(status.error_message());
+    }
+    return reply;
+}
+
+rpc::ActionReply RpcClient::HealthCheck(const std::string& token) const {
+    rpc::HealthCheckRequest request;
+    request.set_token(token);
+    return Invoke(request, &rpc::RemoteOps::Stub::HealthCheck);
+}
+
+rpc::ActionReply RpcClient::ListDir(const std::string& token, const std::string& path) const {
+    rpc::PathRequest request;
+    request.set_token(token);
+    request.set_path(path);
+    return Invoke(request, &rpc::RemoteOps::Stub::ListDir);
+}
+
+rpc::ActionReply RpcClient::ReadFile(const std::string& token, const std::string& path, std::uint64_t max_bytes) const {
+    rpc::ReadFileRequest request;
+    request.set_token(token);
+    request.set_path(path);
+    request.set_max_bytes(max_bytes);
+    return Invoke(request, &rpc::RemoteOps::Stub::ReadFile);
+}
+
+rpc::ActionReply RpcClient::TailFile(const std::string& token, const std::string& path,
+                                     std::uint64_t lines, std::uint64_t max_bytes) const {
+    rpc::TailFileRequest request;
+    request.set_token(token);
+    request.set_path(path);
+    request.set_lines(lines);
+    request.set_max_bytes(max_bytes);
+    return Invoke(request, &rpc::RemoteOps::Stub::TailFile);
+}
+
+rpc::ActionReply RpcClient::GrepFile(const std::string& token, const std::string& path, const std::string& needle,
+                                     std::uint64_t max_matches, std::uint64_t max_line_length) const {
+    rpc::GrepFileRequest request;
+    request.set_token(token);
+    request.set_path(path);
+    request.set_needle(needle);
+    request.set_max_matches(max_matches);
+    request.set_max_line_length(max_line_length);
+    return Invoke(request, &rpc::RemoteOps::Stub::GrepFile);
+}
+
+}  // namespace first_rpc
