@@ -30,11 +30,19 @@ This project uses Conan to manage dependencies.
 ### Windows
 
 ```powershell
-$env:HTTP_PROXY="http://127.0.0.1:7897"; $env:HTTPS_PROXY="http://127.0.0.1:7897"
-conan profile detect --force
-conan install . --output-folder=build --build=missing -s build_type=Release
-cmake --preset conan-release
-cmake --build --preset conan-release
+.\build.ps1
+```
+
+如果需要显式指定构建类型：
+
+```powershell
+.\build.ps1 -BuildType Debug
+```
+
+如果只是依赖已经装好，想跳过 `conan install`：
+
+```powershell
+.\build.ps1 -SkipConanInstall
 ```
 
 ### Linux / macOS
