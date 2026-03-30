@@ -1,0 +1,19 @@
+[Unit]
+Description=first-rpc gRPC server
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__FIRST_RPC_USER__
+Group=__FIRST_RPC_GROUP__
+WorkingDirectory=__FIRST_RPC_WORKDIR__
+EnvironmentFile=__FIRST_RPC_ENV_FILE__
+ExecStart=__FIRST_RPC_WORKDIR__/run_server.sh start --foreground
+Restart=on-failure
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=20
+
+[Install]
+WantedBy=multi-user.target

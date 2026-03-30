@@ -318,6 +318,36 @@ Responsibilities:
 
 If the server should run persistently on Linux, this is usually the first script to inspect.
 
+### 7.5 Binary Installers
+
+- [install.ps1](../install.ps1)
+- [install.sh](../install.sh)
+
+Responsibilities:
+
+- copy built client/server executables into a user-facing install directory
+- on Windows, install into `%LOCALAPPDATA%\first-rpc\bin` and update user PATH
+- on Linux, install into `/usr/local/bin` by default
+
+Use these scripts when the binaries already exist and you mainly want a convenient command-line entry point.
+
+### 7.6 Linux systemd Packaging
+
+- [install_systemd_service.sh](../install_systemd_service.sh)
+- [uninstall_systemd_service.sh](../uninstall_systemd_service.sh)
+- [systemd/first-rpc.service.template](../systemd/first-rpc.service.template)
+- [systemd/first-rpc.env.example](../systemd/first-rpc.env.example)
+
+Responsibilities:
+
+- generate a concrete systemd unit bound to the current repository checkout
+- generate an environment file for runtime settings such as `IMPLEMENTATION`, `PORT`, and `ROOT_DIR`
+- require an explicit service `User/Group` during installation so the service does not accidentally run as `root`
+- reload systemd and optionally enable/start the service
+- stop/disable/remove the systemd service when uninstalling
+
+If the task is about long-running Linux deployment rather than ad-hoc foreground execution, inspect these files right after `run_server.sh`.
+
 ## 8. Recommended Reading Order
 
 ### Scenario 1: Understand the whole project quickly

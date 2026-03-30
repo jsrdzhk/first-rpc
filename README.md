@@ -107,6 +107,19 @@ To install the built executables into a user-level PATH directory for direct Pow
 
 By default this installs binaries into `%LOCALAPPDATA%\first-rpc\bin` and adds that directory to the current user PATH.
 
+On Linux, you can install the built executables into `/usr/local/bin`:
+
+```bash
+sudo ./install.sh
+```
+
+Examples:
+
+```bash
+sudo ./install.sh --impl cpp
+sudo ./install.sh --impl rust --build-type Debug
+```
+
 ### Rust
 
 The repository also includes a Rust implementation under [rust/Cargo.toml](rust/Cargo.toml) that reuses the same protobuf contract and exposes matching executables with `_rust` suffixes:
@@ -223,6 +236,47 @@ If the server binary is already in the current working directory or another cust
 ```
 
 By default, the helper writes runtime logs and pid files under `server-runtime/<impl>/` in the repository root.
+
+### Linux systemd service
+
+For a persistent Linux deployment, the repository now includes:
+
+- [install_systemd_service.sh](install_systemd_service.sh)
+- [systemd/first-rpc.service.template](systemd/first-rpc.service.template)
+- [systemd/first-rpc.env.example](systemd/first-rpc.env.example)
+
+The installer writes:
+
+- a service unit, by default: `/etc/systemd/system/first-rpc.service`
+- an environment file, by default: `/etc/first-rpc/first-rpc.env`
+
+Typical install flow:
+
+```bash
+sudo ./install_systemd_service.sh --user dma --group dma --root /home/dma
+sudo systemctl status first-rpc
+sudo journalctl -u first-rpc -f
+```
+
+To install the Rust server instead:
+
+```bash
+sudo ./install_systemd_service.sh --impl rust --user dma --group dma --root /home/dma
+```
+
+Important notes:
+
+- the installer expects to run as `root`
+- the installer now requires explicit `--user` and `--group` so the service cannot silently run as `root`
+- it reuses [run_server.sh](run_server.sh) in foreground mode for process startup
+- the service reads runtime settings from the generated env file
+- use `--force` if you want to overwrite an existing unit or env file
+
+To uninstall the systemd service:
+
+```bash
+sudo ./uninstall_systemd_service.sh
+```
 
 Health check:
 
