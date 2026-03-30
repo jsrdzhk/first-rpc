@@ -148,6 +148,34 @@ shell_quote() {
   printf "'%s'" "${value//\'/\'\\\'\'}"
 }
 
+ensure_root() {
+  if [[ "$EUID" -eq 0 ]]; then
+    return 0
+  fi
+
+  require_cmd sudo
+  echo "Elevating with sudo to install the systemd service"
+  exec sudo --preserve-env=SERVICE_NAME,SERVICE_USER,SERVICE_GROUP,IMPLEMENTATION,BUILD_TYPE,HOST,PORT,ROOT_DIR,TOKEN,BIN_PATH,LOG_DIR,PID_FILE,ENV_FILE,UNIT_FILE,ENABLE_SERVICE,START_SERVICE,FORCE_OVERWRITE "$0" "$@"
+}
+
+resolve_user_home() {
+  local username="$1"
+  local passwd_entry
+  passwd_entry="$(getent passwd "$username" || true)"
+  if [[ -z "$passwd_entry" ]]; then
+    echo "Unable to resolve home directory for service user: $username" >&2
+    exit 1
+  fi
+
+  IFS=':' read -r _ _ _ _ _ user_home _ <<<"$passwd_entry"
+  if [[ -z "$user_home" || ! -d "$user_home" ]]; then
+    echo "Resolved home directory for service user is invalid: $username -> $user_home" >&2
+    exit 1
+  fi
+
+  echo "$user_home"
+}
+
 assert_writable_target() {
   local path="$1"
   if [[ -e "$path" && "$FORCE_OVERWRITE" != "1" ]]; then
@@ -158,6 +186,8 @@ assert_writable_target() {
 
 require_cmd systemctl
 require_cmd install
+require_cmd getent
+ensure_root "$@"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TEMPLATE_PATH="$SCRIPT_DIR/systemd/first-rpc.service.template"
@@ -169,11 +199,6 @@ fi
 
 if [[ ! -d "$ROOT_DIR" ]]; then
   echo "Configured root path does not exist: $ROOT_DIR" >&2
-  exit 1
-fi
-
-if [[ "$EUID" -ne 0 ]]; then
-  echo "This installer writes to system directories and must run as root." >&2
   exit 1
 fi
 
@@ -191,6 +216,16 @@ case "$IMPLEMENTATION" in
     exit 1
     ;;
 esac
+
+SERVICE_HOME="$(resolve_user_home "$SERVICE_USER")"
+
+if [[ -z "$LOG_DIR" ]]; then
+  LOG_DIR="$SERVICE_HOME/first-rpc-runtime/$IMPLEMENTATION"
+fi
+
+if [[ -z "$PID_FILE" ]]; then
+  PID_FILE="$LOG_DIR/first_rpc_server.pid"
+fi
 
 mkdir -p "$(dirname "$ENV_FILE")"
 mkdir -p "$(dirname "$UNIT_FILE")"

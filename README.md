@@ -113,6 +113,8 @@ On Linux, you can install the built executables into `/usr/local/bin`:
 sudo ./install.sh
 ```
 
+If the script is started without `root`, it now re-executes itself through `sudo`.
+
 Examples:
 
 ```bash
@@ -266,10 +268,11 @@ sudo ./install_systemd_service.sh --impl rust --user dma --group dma --root /hom
 
 Important notes:
 
-- the installer expects to run as `root`
+- the installer auto-reexecs itself through `sudo` when it is not started as `root`
 - the installer now requires explicit `--user` and `--group` so the service cannot silently run as `root`
 - it reuses [run_server.sh](run_server.sh) in foreground mode for process startup
 - the service reads runtime settings from the generated env file
+- when `--log-dir` and `--pid-file` are omitted, they default under the service user's home, for example `/home/dma/first-rpc-runtime/cpp`
 - use `--force` if you want to overwrite an existing unit or env file
 
 To uninstall the systemd service:

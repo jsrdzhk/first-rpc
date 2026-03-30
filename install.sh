@@ -56,6 +56,16 @@ require_cmd() {
   fi
 }
 
+ensure_root() {
+  if [[ "$EUID" -eq 0 ]]; then
+    return 0
+  fi
+
+  require_cmd sudo
+  echo "Elevating with sudo to install binaries into $INSTALL_DIR"
+  exec sudo --preserve-env=IMPLEMENTATION,BUILD_TYPE,INSTALL_DIR "$0" "$@"
+}
+
 resolve_cpp_binaries() {
   local repo_root="$1"
   local build_type="$2"
@@ -122,6 +132,7 @@ resolve_rust_binaries() {
 }
 
 require_cmd install
+ensure_root "$@"
 
 case "$IMPLEMENTATION" in
   cpp|rust|all)
@@ -133,11 +144,6 @@ case "$IMPLEMENTATION" in
 esac
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-if [[ "$EUID" -ne 0 ]]; then
-  echo "This installer writes to $INSTALL_DIR and should usually run as root." >&2
-  exit 1
-fi
 
 mkdir -p "$INSTALL_DIR"
 

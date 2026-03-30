@@ -73,12 +73,18 @@ require_cmd() {
   fi
 }
 
-require_cmd systemctl
+ensure_root() {
+  if [[ "$EUID" -eq 0 ]]; then
+    return 0
+  fi
 
-if [[ "$EUID" -ne 0 ]]; then
-  echo "This uninstaller modifies systemd state and must run as root." >&2
-  exit 1
-fi
+  require_cmd sudo
+  echo "Elevating with sudo to uninstall the systemd service"
+  exec sudo --preserve-env=SERVICE_NAME,ENV_FILE,UNIT_FILE,REMOVE_ENV_FILE,REMOVE_UNIT_FILE,PURGE_ENV_DIR "$0" "$@"
+}
+
+require_cmd systemctl
+ensure_root "$@"
 
 if systemctl list-unit-files | grep -q "^${SERVICE_NAME}\.service"; then
   systemctl stop "$SERVICE_NAME" >/dev/null 2>&1 || true
