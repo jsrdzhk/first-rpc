@@ -13,6 +13,7 @@ HTTP_PROXY_VALUE="${HTTP_PROXY_VALUE-}"
 GCC_C="${GCC_C:-gcc}"
 GCC_CXX="${GCC_CXX:-g++}"
 GRPC_VERSION="${GRPC_VERSION:-}"
+PARALLEL="${PARALLEL:-}"
 SKIP_CLONE="${SKIP_CLONE:-0}"
 SKIP_BUILD="${SKIP_BUILD:-0}"
 
@@ -26,6 +27,7 @@ Options:
   --gcc <gcc binary>
   --gxx <g++ binary>
   --grpc-version <tag>
+  --parallel <jobs>
   --skip-clone
   --skip-build
   --help
@@ -36,6 +38,7 @@ Environment overrides:
   GCC_C
   GCC_CXX
   GRPC_VERSION
+  PARALLEL
   SKIP_CLONE
   SKIP_BUILD
 EOF
@@ -61,6 +64,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --grpc-version)
       GRPC_VERSION="$2"
+      shift 2
+      ;;
+    --parallel)
+      PARALLEL="$2"
       shift 2
       ;;
     --skip-clone)
@@ -206,6 +213,15 @@ require_cmd "$GCC_C"
 require_cmd "$GCC_CXX"
 validate_compiler_versions
 
+if [[ -z "$PARALLEL" ]]; then
+  PARALLEL="$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)"
+fi
+
+if [[ ! "$PARALLEL" =~ ^[0-9]+$ ]] || (( PARALLEL < 1 )); then
+  echo "Parallel job count must be a positive integer. Current value: $PARALLEL" >&2
+  exit 1
+fi
+
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 THIRD_PARTY_ROOT="$REPO_ROOT/third_party"
 GRPC_SOURCE_DIR="$THIRD_PARTY_ROOT/grpc-src"
@@ -264,7 +280,7 @@ cmake -S "$GRPC_SOURCE_DIR" -B "$GRPC_BUILD_DIR" \
 
 if [[ "$SKIP_BUILD" != "1" ]]; then
   step "Build and install gRPC"
-  cmake --build "$GRPC_BUILD_DIR" --parallel 4
+  cmake --build "$GRPC_BUILD_DIR" --parallel "$PARALLEL"
   cmake --install "$GRPC_BUILD_DIR"
   echo "gRPC installed to $GRPC_INSTALL_DIR"
 else
