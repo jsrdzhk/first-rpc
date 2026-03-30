@@ -176,6 +176,29 @@ resolve_user_home() {
   echo "$user_home"
 }
 
+resolve_installed_binary() {
+  local implementation="$1"
+  local binary_name="first_rpc_server"
+  if [[ "$implementation" == "rust" ]]; then
+    binary_name="first_rpc_server_rust"
+  fi
+
+  local installed_path="/usr/local/bin/$binary_name"
+  if [[ -x "$installed_path" ]]; then
+    echo "$installed_path"
+    return 0
+  fi
+
+  local resolved_from_path
+  resolved_from_path="$(command -v "$binary_name" 2>/dev/null || true)"
+  if [[ -n "$resolved_from_path" && -x "$resolved_from_path" ]]; then
+    echo "$resolved_from_path"
+    return 0
+  fi
+
+  echo ""
+}
+
 assert_writable_target() {
   local path="$1"
   if [[ -e "$path" && "$FORCE_OVERWRITE" != "1" ]]; then
@@ -218,6 +241,10 @@ case "$IMPLEMENTATION" in
 esac
 
 SERVICE_HOME="$(resolve_user_home "$SERVICE_USER")"
+
+if [[ -z "$BIN_PATH" ]]; then
+  BIN_PATH="$(resolve_installed_binary "$IMPLEMENTATION")"
+fi
 
 if [[ -z "$LOG_DIR" ]]; then
   LOG_DIR="$SERVICE_HOME/first-rpc-runtime/$IMPLEMENTATION"

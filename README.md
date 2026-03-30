@@ -272,6 +272,7 @@ Important notes:
 - the installer now requires explicit `--user` and `--group` so the service cannot silently run as `root`
 - it reuses [run_server.sh](run_server.sh) in foreground mode for process startup
 - the service reads runtime settings from the generated env file
+- when `--bin` is omitted, the installer prefers an already installed server binary such as `/usr/local/bin/first_rpc_server`
 - when `--log-dir` and `--pid-file` are omitted, they default under the service user's home, for example `/home/dma/first-rpc-runtime/cpp`
 - use `--force` if you want to overwrite an existing unit or env file
 

@@ -177,6 +177,12 @@ resolve_binary_path() {
       fi
     done
 
+    candidate="$(command -v first_rpc_server 2>/dev/null || true)"
+    if [[ -n "$candidate" && -x "$candidate" ]]; then
+      echo "$candidate"
+      return 0
+    fi
+
     local build_dir
     if [[ "$profile_dir" == "debug" ]]; then
       build_dir="cmake-build-debug"
@@ -192,7 +198,7 @@ resolve_binary_path() {
         return 0
       fi
     done
-    echo "Unable to find C++ server binary for build type $BUILD_TYPE. Run ./build.sh first." >&2
+    echo "Unable to find C++ server binary in the current directory, PATH, or build outputs for build type $BUILD_TYPE." >&2
     exit 1
   fi
 
@@ -206,12 +212,18 @@ resolve_binary_path() {
       fi
     done
 
+    candidate="$(command -v first_rpc_server_rust 2>/dev/null || true)"
+    if [[ -n "$candidate" && -x "$candidate" ]]; then
+      echo "$candidate"
+      return 0
+    fi
+
     candidate="$SCRIPT_DIR/rust/target/$profile_dir/first_rpc_server_rust"
     if [[ -x "$candidate" ]]; then
       echo "$candidate"
       return 0
     fi
-    echo "Unable to find Rust server binary for build type $BUILD_TYPE. Run ./rust/build.sh first." >&2
+    echo "Unable to find Rust server binary in the current directory, PATH, or Cargo build outputs for build type $BUILD_TYPE." >&2
     exit 1
   fi
 
