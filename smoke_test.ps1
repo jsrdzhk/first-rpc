@@ -2,7 +2,7 @@ param(
     [ValidateSet("Debug", "Release", "RelWithDebInfo", "MinSizeRel")]
     [string]$BuildType = "Release",
 
-    [string]$Host = "127.0.0.1",
+    [string]$ServerHost = "127.0.0.1",
 
     [int]$Port = 18777,
 
@@ -76,7 +76,8 @@ $ServerPath = Resolve-BinaryPath -Name "first_rpc_server" -BuildType $BuildType 
 $ClientPath = Resolve-BinaryPath -Name "first_rpc_client" -BuildType $BuildType -RepoRoot $RepoRoot
 
 $SmokeRoot = Join-Path $RepoRoot "build\smoke-test"
-$ServerLog = Join-Path $SmokeRoot "server.log"
+$ServerStdoutLog = Join-Path $SmokeRoot "server.stdout.log"
+$ServerStderrLog = Join-Path $SmokeRoot "server.stderr.log"
 $SampleFile = Join-Path $SmokeRoot "sample.log"
 
 New-Item -ItemType Directory -Force -Path $SmokeRoot | Out-Null
@@ -91,15 +92,15 @@ $server = $null
 
 try {
     $server = Start-Process -FilePath $ServerPath `
-        -ArgumentList @("--host", $Host, "--port", "$Port", "--root", $SmokeRoot, "--token", $Token) `
+        -ArgumentList @("--host", $ServerHost, "--port", "$Port", "--root", $SmokeRoot, "--token", $Token) `
         -PassThru `
-        -RedirectStandardOutput $ServerLog `
-        -RedirectStandardError $ServerLog `
+        -RedirectStandardOutput $ServerStdoutLog `
+        -RedirectStandardError $ServerStderrLog `
         -WindowStyle Hidden
 
     Start-Sleep -Seconds 2
 
-    $commonArgs = @("--host", $Host, "--port", "$Port", "--token", $Token)
+    $commonArgs = @("--host", $ServerHost, "--port", "$Port", "--token", $Token)
 
     $health = Invoke-Client -ClientPath $ClientPath -Arguments ($commonArgs + @("health_check"))
     Assert-Contains -Text $health -Expected "ok: true" -Label "health_check"
