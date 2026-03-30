@@ -111,13 +111,13 @@ Or use the helper scripts:
 Windows:
 
 ```powershell
-.\rust_build.ps1 -BuildType Release
+.\rust\rust_build.ps1 -BuildType Release
 ```
 
 Linux / macOS:
 
 ```bash
-./rust_build.sh --build-type Release
+./rust/rust_build.sh --build-type Release
 ```
 
 ### Linux / macOS
@@ -192,6 +192,20 @@ Linux / macOS:
 
 ```bash
 ./smoke_test.sh --build-type Release
+```
+
+Rust smoke tests:
+
+Windows:
+
+```powershell
+.\rust\smoke_test_rust.ps1 -BuildType Release
+```
+
+Linux / macOS:
+
+```bash
+./rust/smoke_test_rust.sh --build-type Release
 ```
 
 ## CentOS 7 + GCC 15 Notes

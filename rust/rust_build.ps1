@@ -33,8 +33,8 @@ function Assert-CommandExists {
     }
 }
 
-$RepoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-$RustManifest = Join-Path $RepoRoot "rust\Cargo.toml"
+$RustRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+$RustManifest = Join-Path $RustRoot "Cargo.toml"
 
 Assert-CommandExists -CommandName "cargo"
 
@@ -44,7 +44,7 @@ if (-not [string]::IsNullOrWhiteSpace($HttpProxy)) {
     Write-Host "Using proxy: $HttpProxy" -ForegroundColor DarkGray
 }
 
-Push-Location $RepoRoot
+Push-Location $RustRoot
 try {
     if (-not $SkipBuild) {
         Invoke-Step -Name "Build Rust binaries" -Action {

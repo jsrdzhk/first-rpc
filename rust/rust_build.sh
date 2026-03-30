@@ -14,7 +14,7 @@ SKIP_BUILD="${SKIP_BUILD:-0}"
 
 usage() {
   cat <<'EOF'
-Usage: ./rust_build.sh [options]
+Usage: ./rust/rust_build.sh [options]
 
 Options:
   --build-type <Debug|Release>
@@ -69,7 +69,7 @@ step() {
 require_cmd cargo
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MANIFEST_PATH="$SCRIPT_DIR/rust/Cargo.toml"
+MANIFEST_PATH="$SCRIPT_DIR/Cargo.toml"
 
 if [[ -n "$HTTP_PROXY_VALUE" ]]; then
   export HTTP_PROXY="$HTTP_PROXY_VALUE"
