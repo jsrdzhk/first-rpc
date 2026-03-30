@@ -20,8 +20,12 @@ This initial implementation provides:
   - `health_check`
   - `list_dir`
   - `read_file`
-  - `tail_file`
-  - `grep_file`
+- `tail_file`
+- `grep_file`
+
+Code structure guide for future onboarding:
+
+- [doc/code-structure.md](C:/my_proj/first-rpc/doc/code-structure.md)
 
 ## Build
 
