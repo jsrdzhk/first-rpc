@@ -87,6 +87,39 @@ Windows scripts default to `ProcessorCount` parallel jobs. You can override it w
 .\build.ps1 -SkipConfigure
 ```
 
+### Rust
+
+The repo also includes a Rust implementation under [rust/Cargo.toml](C:/my_proj/first-rpc/rust/Cargo.toml) that reuses the same protobuf contract and exposes matching executables with `_rust` suffixes:
+
+- `first_rpc_server_rust`
+- `first_rpc_client_rust`
+
+Build it with Cargo:
+
+```powershell
+cargo build --release --manifest-path rust/Cargo.toml
+```
+
+or:
+
+```bash
+cargo build --release --manifest-path rust/Cargo.toml
+```
+
+Or use the helper scripts:
+
+Windows:
+
+```powershell
+.\rust_build.ps1 -BuildType Release
+```
+
+Linux / macOS:
+
+```bash
+./rust_build.sh --build-type Release
+```
+
 ### Linux / macOS
 
 ```bash
