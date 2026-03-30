@@ -13,6 +13,7 @@ GENERATOR="${GENERATOR:-}"
 HTTP_PROXY_VALUE="${HTTP_PROXY_VALUE-}"
 GCC_C="${GCC_C:-gcc}"
 GCC_CXX="${GCC_CXX:-g++}"
+RUN_TESTS="${RUN_TESTS:-0}"
 SKIP_CONFIGURE="${SKIP_CONFIGURE:-0}"
 SKIP_BUILD="${SKIP_BUILD:-0}"
 
@@ -26,6 +27,7 @@ Options:
   --http-proxy <url>
   --gcc <gcc binary>
   --gxx <g++ binary>
+  --run-tests
   --skip-configure
   --skip-build
   --help
@@ -36,6 +38,7 @@ Environment overrides:
   HTTP_PROXY_VALUE
   GCC_C
   GCC_CXX
+  RUN_TESTS
   SKIP_CONFIGURE
   SKIP_BUILD
 EOF
@@ -62,6 +65,10 @@ while [[ $# -gt 0 ]]; do
     --gxx)
       GCC_CXX="$2"
       shift 2
+      ;;
+    --run-tests)
+      RUN_TESTS=1
+      shift
       ;;
     --skip-configure)
       SKIP_CONFIGURE=1
@@ -118,6 +125,7 @@ step() {
 }
 
 require_cmd cmake
+require_cmd ctest
 require_cmd "$GCC_C"
 require_cmd "$GCC_CXX"
 
@@ -157,6 +165,11 @@ fi
 if [[ "$SKIP_BUILD" != "1" ]]; then
   step "Build project"
   cmake --build "$BUILD_DIR" --config "$BUILD_TYPE" -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)"
+fi
+
+if [[ "$RUN_TESTS" == "1" ]]; then
+  step "Run C++ unit tests"
+  ctest --test-dir "$BUILD_DIR" --output-on-failure -C "$BUILD_TYPE"
 fi
 
 echo "Build completed."

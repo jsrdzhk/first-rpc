@@ -10,6 +10,7 @@ fi
 
 BUILD_TYPE="${BUILD_TYPE:-Release}"
 HTTP_PROXY_VALUE="${HTTP_PROXY_VALUE-}"
+RUN_TESTS="${RUN_TESTS:-0}"
 SKIP_BUILD="${SKIP_BUILD:-0}"
 
 usage() {
@@ -19,12 +20,14 @@ Usage: ./rust/rust_build.sh [options]
 Options:
   --build-type <Debug|Release>
   --http-proxy <url>
+  --run-tests
   --skip-build
   --help
 
 Environment overrides:
   BUILD_TYPE
   HTTP_PROXY_VALUE
+  RUN_TESTS
   SKIP_BUILD
 EOF
 }
@@ -38,6 +41,10 @@ while [[ $# -gt 0 ]]; do
     --http-proxy)
       HTTP_PROXY_VALUE="$2"
       shift 2
+      ;;
+    --run-tests)
+      RUN_TESTS=1
+      shift
       ;;
     --skip-build)
       SKIP_BUILD=1
@@ -85,6 +92,11 @@ if [[ "$SKIP_BUILD" != "1" ]]; then
   else
     cargo build --manifest-path "$MANIFEST_PATH"
   fi
+fi
+
+if [[ "$RUN_TESTS" == "1" ]]; then
+  step "Run Rust unit tests"
+  cargo test --manifest-path "$MANIFEST_PATH"
 fi
 
 echo "Rust build completed."

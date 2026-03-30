@@ -79,6 +79,12 @@ For day-to-day C++ work after dependencies are already installed:
 .\build.ps1
 ```
 
+To build and run C++ unit tests in one step:
+
+```powershell
+.\build.ps1 -RunTests
+```
+
 To reinstall gRPC only:
 
 ```powershell
@@ -127,10 +133,22 @@ Windows:
 .\rust\rust_build.ps1 -BuildType Release
 ```
 
+To build and run Rust unit tests in one step:
+
+```powershell
+.\rust\rust_build.ps1 -RunTests
+```
+
 Linux / macOS:
 
 ```bash
 ./rust/rust_build.sh --build-type Release
+```
+
+To build and run Rust unit tests in one step:
+
+```bash
+./rust/rust_build.sh --run-tests
 ```
 
 ### Linux / macOS
@@ -167,6 +185,12 @@ For day-to-day C++ work after dependencies are already installed:
 
 ```bash
 ./build.sh
+```
+
+To build and run C++ unit tests in one step:
+
+```bash
+./build.sh --run-tests
 ```
 
 ## Run
@@ -245,6 +269,22 @@ Linux / macOS:
 
 ```bash
 ./rust/smoke_test_rust.sh --build-type Release
+```
+
+## Unit Tests
+
+C++ unit tests use Catch2 and are registered through CTest.
+
+After configuring and building the C++ project:
+
+```bash
+ctest --test-dir cmake-build-release --output-on-failure
+```
+
+Rust unit tests use the built-in Cargo test runner:
+
+```bash
+cargo test --manifest-path rust/Cargo.toml
 ```
 
 ## Next Steps

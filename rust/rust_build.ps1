@@ -4,6 +4,8 @@ param(
 
     [string]$HttpProxy = "http://127.0.0.1:7897",
 
+    [switch]$RunTests,
+
     [switch]$SkipBuild
 )
 
@@ -53,6 +55,12 @@ try {
             } else {
                 cargo build --manifest-path $RustManifest
             }
+        }
+    }
+
+    if ($RunTests) {
+        Invoke-Step -Name "Run Rust unit tests" -Action {
+            cargo test --manifest-path $RustManifest
         }
     }
 

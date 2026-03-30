@@ -46,3 +46,32 @@ pub fn format_reply(reply: &ActionReply) -> String {
     }
     output
 }
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use crate::generated::rpc::ActionReply;
+
+    use super::format_reply;
+
+    #[test]
+    fn format_reply_orders_map_keys() {
+        let reply = ActionReply {
+            ok: true,
+            action: "health_check".to_string(),
+            summary: "server is healthy".to_string(),
+            data: HashMap::from([
+                ("zeta".to_string(), "last".to_string()),
+                ("alpha".to_string(), "first".to_string()),
+            ]),
+            error: String::new(),
+            duration_ms: 7,
+        };
+
+        let formatted = format_reply(&reply);
+
+        assert!(formatted.contains("ok: true\n"));
+        assert!(formatted.contains("[alpha]\nfirst\n[zeta]\nlast\n"));
+    }
+}

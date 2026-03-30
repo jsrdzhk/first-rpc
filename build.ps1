@@ -11,6 +11,8 @@ param(
 
     [int]$Parallel = [Environment]::ProcessorCount,
 
+    [switch]$RunTests,
+
     [switch]$SkipConfigure,
     [switch]$SkipBuild
 )
@@ -65,6 +67,7 @@ $ProtobufConfigCandidates = @(
 )
 
 Assert-CommandExists -CommandName "cmake"
+Assert-CommandExists -CommandName "ctest"
 
 if (-not [string]::IsNullOrWhiteSpace($HttpProxy)) {
     $env:HTTP_PROXY = $HttpProxy
@@ -104,6 +107,12 @@ try {
     if (-not $SkipBuild) {
         Invoke-Step -Name "Build solution" -Action {
             cmake --build $BuildDirName --config $BuildType --parallel $Parallel
+        }
+    }
+
+    if ($RunTests) {
+        Invoke-Step -Name "Run C++ unit tests" -Action {
+            ctest --test-dir $BuildDirName --build-config $BuildType --output-on-failure
         }
     }
 

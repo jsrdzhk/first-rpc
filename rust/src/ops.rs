@@ -613,3 +613,207 @@ pub async fn upload_abort_client(
         .await?
         .into_inner())
 }
+
+#[cfg(test)]
+mod tests {
+    use tempfile::tempdir;
+    use tonic::Request;
+
+    use crate::generated::rpc::{
+        GrepFileRequest, PathRequest, ReadFileRequest, UploadChunkRequest, UploadControlRequest,
+        UploadInitRequest,
+    };
+
+    use super::RemoteOps;
+    use super::RemoteOpsState;
+
+    #[test]
+    fn resolve_path_rejects_parent_escape() {
+        let dir = tempdir().expect("tempdir");
+        let state = RemoteOpsState::new(dir.path().to_path_buf(), String::new());
+
+        let err = state
+            .resolve_path("../escape.txt")
+            .expect_err("expected escape failure");
+        assert!(err
+            .to_string()
+            .contains("Requested path escapes configured root"));
+    }
+
+    #[tokio::test]
+    async fn upload_roundtrip_overwrites_by_default() {
+        let dir = tempdir().expect("tempdir");
+        let state = RemoteOpsState::new(dir.path().to_path_buf(), String::new());
+
+        let init_reply = state
+            .upload_init(Request::new(UploadInitRequest {
+                token: String::new(),
+                path: "uploads/demo.txt".to_string(),
+                overwrite: true,
+                expected_size: 5,
+            }))
+            .await
+            .expect("upload init")
+            .into_inner();
+        assert!(init_reply.ok);
+
+        let upload_id = init_reply
+            .data
+            .get("upload_id")
+            .cloned()
+            .expect("upload id");
+
+        let chunk_reply = state
+            .upload_chunk(Request::new(UploadChunkRequest {
+                token: String::new(),
+                upload_id: upload_id.clone(),
+                offset: 0,
+                content: b"hello".to_vec(),
+            }))
+            .await
+            .expect("upload chunk")
+            .into_inner();
+        assert!(chunk_reply.ok);
+
+        let commit_reply = state
+            .upload_commit(Request::new(UploadControlRequest {
+                token: String::new(),
+                upload_id: upload_id.clone(),
+            }))
+            .await
+            .expect("upload commit")
+            .into_inner();
+        assert!(commit_reply.ok);
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("uploads/demo.txt"))
+                .expect("read first upload"),
+            "hello"
+        );
+
+        let overwrite_init_reply = state
+            .upload_init(Request::new(UploadInitRequest {
+                token: String::new(),
+                path: "uploads/demo.txt".to_string(),
+                overwrite: true,
+                expected_size: 5,
+            }))
+            .await
+            .expect("overwrite init")
+            .into_inner();
+        assert!(overwrite_init_reply.ok);
+
+        let overwrite_upload_id = overwrite_init_reply
+            .data
+            .get("upload_id")
+            .cloned()
+            .expect("overwrite upload id");
+
+        let overwrite_chunk_reply = state
+            .upload_chunk(Request::new(UploadChunkRequest {
+                token: String::new(),
+                upload_id: overwrite_upload_id.clone(),
+                offset: 0,
+                content: b"world".to_vec(),
+            }))
+            .await
+            .expect("overwrite chunk")
+            .into_inner();
+        assert!(overwrite_chunk_reply.ok);
+
+        let overwrite_commit_reply = state
+            .upload_commit(Request::new(UploadControlRequest {
+                token: String::new(),
+                upload_id: overwrite_upload_id,
+            }))
+            .await
+            .expect("overwrite commit")
+            .into_inner();
+        assert!(overwrite_commit_reply.ok);
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("uploads/demo.txt"))
+                .expect("read overwritten upload"),
+            "world"
+        );
+    }
+
+    #[tokio::test]
+    async fn upload_rejects_bad_offset() {
+        let dir = tempdir().expect("tempdir");
+        let state = RemoteOpsState::new(dir.path().to_path_buf(), String::new());
+
+        let init_reply = state
+            .upload_init(Request::new(UploadInitRequest {
+                token: String::new(),
+                path: "uploads/demo.txt".to_string(),
+                overwrite: true,
+                expected_size: 5,
+            }))
+            .await
+            .expect("upload init")
+            .into_inner();
+        let upload_id = init_reply
+            .data
+            .get("upload_id")
+            .cloned()
+            .expect("upload id");
+
+        let chunk_reply = state
+            .upload_chunk(Request::new(UploadChunkRequest {
+                token: String::new(),
+                upload_id,
+                offset: 2,
+                content: b"hello".to_vec(),
+            }))
+            .await
+            .expect("upload chunk")
+            .into_inner();
+
+        assert!(!chunk_reply.ok);
+        assert!(chunk_reply.error.contains("Unexpected upload offset"));
+    }
+
+    #[tokio::test]
+    async fn file_rpc_reads_expected_content() {
+        let dir = tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("sample.log"), "alpha\nbeta\nERROR line\n")
+            .expect("write sample");
+        let state = RemoteOpsState::new(dir.path().to_path_buf(), String::new());
+
+        let read_reply = state
+            .read_file(Request::new(ReadFileRequest {
+                token: String::new(),
+                path: "sample.log".to_string(),
+                max_bytes: 1024,
+            }))
+            .await
+            .expect("read file")
+            .into_inner();
+        assert!(read_reply.ok);
+        assert!(read_reply.data["content"].contains("ERROR line"));
+
+        let grep_reply = state
+            .grep_file(Request::new(GrepFileRequest {
+                token: String::new(),
+                path: "sample.log".to_string(),
+                needle: "ERROR".to_string(),
+                max_matches: 10,
+                max_line_length: 1024,
+            }))
+            .await
+            .expect("grep file")
+            .into_inner();
+        assert!(grep_reply.ok);
+        assert_eq!(grep_reply.data["matches"], "3:ERROR line\n");
+
+        let list_reply = state
+            .list_dir(Request::new(PathRequest {
+                token: String::new(),
+                path: ".".to_string(),
+            }))
+            .await
+            .expect("list dir")
+            .into_inner();
+        assert!(list_reply.ok);
+        assert!(list_reply.data["items"].contains("sample.log"));
+    }
+}
