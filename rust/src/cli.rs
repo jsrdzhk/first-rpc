@@ -20,7 +20,10 @@ pub fn has_arg(args: &[String], name: &str) -> bool {
 
 pub fn format_reply(reply: &ActionReply) -> String {
     let mut output = String::new();
-    output.push_str(&format!("ok: {}\n", if reply.ok { "true" } else { "false" }));
+    output.push_str(&format!(
+        "ok: {}\n",
+        if reply.ok { "true" } else { "false" }
+    ));
     output.push_str(&format!("action: {}\n", reply.action));
     output.push_str(&format!("summary: {}\n", reply.summary));
     output.push_str(&format!("duration_ms: {}\n", reply.duration_ms));

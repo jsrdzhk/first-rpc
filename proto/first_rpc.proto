@@ -32,6 +32,25 @@ message GrepFileRequest {
   uint64 max_line_length = 5;
 }
 
+message UploadInitRequest {
+  string token = 1;
+  string path = 2;
+  bool overwrite = 3;
+  uint64 expected_size = 4;
+}
+
+message UploadChunkRequest {
+  string token = 1;
+  string upload_id = 2;
+  uint64 offset = 3;
+  bytes content = 4;
+}
+
+message UploadControlRequest {
+  string token = 1;
+  string upload_id = 2;
+}
+
 message ActionReply {
   bool ok = 1;
   string action = 2;
@@ -47,4 +66,8 @@ service RemoteOps {
   rpc ReadFile(ReadFileRequest) returns (ActionReply);
   rpc TailFile(TailFileRequest) returns (ActionReply);
   rpc GrepFile(GrepFileRequest) returns (ActionReply);
+  rpc UploadInit(UploadInitRequest) returns (ActionReply);
+  rpc UploadChunk(UploadChunkRequest) returns (ActionReply);
+  rpc UploadCommit(UploadControlRequest) returns (ActionReply);
+  rpc UploadAbort(UploadControlRequest) returns (ActionReply);
 }

@@ -88,6 +88,8 @@ CLIENT_PATH="$(resolve_binary_path first_rpc_client_rust "$RUST_ROOT")"
 SMOKE_ROOT="$RUST_ROOT/build/smoke-test-rust"
 SERVER_LOG="$SMOKE_ROOT/server.log"
 SAMPLE_FILE="$SMOKE_ROOT/sample.log"
+UPLOAD_SOURCE_FILE="$SMOKE_ROOT/upload-source.txt"
+UPLOAD_OVERWRITE_FILE="$SMOKE_ROOT/upload-overwrite.txt"
 
 mkdir -p "$SMOKE_ROOT"
 cat >"$SAMPLE_FILE" <<'EOF'
@@ -95,6 +97,12 @@ alpha line
 beta line
 ERROR target line
 omega line
+EOF
+cat >"$UPLOAD_SOURCE_FILE" <<'EOF'
+upload content v1
+EOF
+cat >"$UPLOAD_OVERWRITE_FILE" <<'EOF'
+upload content v2
 EOF
 
 cleanup() {
@@ -127,5 +135,18 @@ assert_contains "$tail_file" "omega line" "tail_file"
 
 grep_file="$("$CLIENT_PATH" "${COMMON_ARGS[@]}" grep_file --path sample.log --needle ERROR)"
 assert_contains "$grep_file" "ERROR target line" "grep_file"
+
+upload_file="$("$CLIENT_PATH" "${COMMON_ARGS[@]}" upload_file --local "$UPLOAD_SOURCE_FILE" --path uploads/received.txt)"
+assert_contains "$upload_file" "ok: true" "upload_file"
+assert_contains "$upload_file" "summary: upload committed" "upload_file"
+
+uploaded_content="$("$CLIENT_PATH" "${COMMON_ARGS[@]}" read_file --path uploads/received.txt)"
+assert_contains "$uploaded_content" "upload content v1" "read uploaded file"
+
+overwrite_upload="$("$CLIENT_PATH" "${COMMON_ARGS[@]}" upload_file --local "$UPLOAD_OVERWRITE_FILE" --path uploads/received.txt)"
+assert_contains "$overwrite_upload" "ok: true" "overwrite upload_file"
+
+overwritten_content="$("$CLIENT_PATH" "${COMMON_ARGS[@]}" read_file --path uploads/received.txt)"
+assert_contains "$overwritten_content" "upload content v2" "read overwritten file"
 
 echo "Rust smoke test passed."

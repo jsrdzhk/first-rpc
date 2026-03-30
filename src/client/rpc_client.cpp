@@ -67,4 +67,38 @@ rpc::ActionReply RpcClient::GrepFile(const std::string& token, const std::string
     return Invoke(request, &rpc::RemoteOps::Stub::GrepFile);
 }
 
+rpc::ActionReply RpcClient::UploadInit(const std::string& token, const std::string& path, bool overwrite,
+                                       std::uint64_t expected_size) const {
+    rpc::UploadInitRequest request;
+    request.set_token(token);
+    request.set_path(path);
+    request.set_overwrite(overwrite);
+    request.set_expected_size(expected_size);
+    return Invoke(request, &rpc::RemoteOps::Stub::UploadInit);
+}
+
+rpc::ActionReply RpcClient::UploadChunk(const std::string& token, const std::string& upload_id, std::uint64_t offset,
+                                        const std::string& content) const {
+    rpc::UploadChunkRequest request;
+    request.set_token(token);
+    request.set_upload_id(upload_id);
+    request.set_offset(offset);
+    request.set_content(content);
+    return Invoke(request, &rpc::RemoteOps::Stub::UploadChunk);
+}
+
+rpc::ActionReply RpcClient::UploadCommit(const std::string& token, const std::string& upload_id) const {
+    rpc::UploadControlRequest request;
+    request.set_token(token);
+    request.set_upload_id(upload_id);
+    return Invoke(request, &rpc::RemoteOps::Stub::UploadCommit);
+}
+
+rpc::ActionReply RpcClient::UploadAbort(const std::string& token, const std::string& upload_id) const {
+    rpc::UploadControlRequest request;
+    request.set_token(token);
+    request.set_upload_id(upload_id);
+    return Invoke(request, &rpc::RemoteOps::Stub::UploadAbort);
+}
+
 }  // namespace first_rpc

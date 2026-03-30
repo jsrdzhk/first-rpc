@@ -1,8 +1,9 @@
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::fs;
-use std::io::{BufRead, BufReader, Read};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Component, Path, PathBuf};
-use std::time::Instant;
+use std::sync::Mutex;
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::{anyhow, Result};
 use chrono::Utc;
@@ -12,17 +13,35 @@ use tonic::{Request, Response, Status};
 use crate::generated::rpc::remote_ops_client::RemoteOpsClient;
 use crate::generated::rpc::remote_ops_server::RemoteOps;
 use crate::generated::rpc::{
-    ActionReply, GrepFileRequest, HealthCheckRequest, PathRequest, ReadFileRequest, TailFileRequest,
+    ActionReply, GrepFileRequest, HealthCheckRequest, PathRequest, ReadFileRequest,
+    TailFileRequest, UploadChunkRequest, UploadControlRequest, UploadInitRequest,
 };
+
+const MAX_UPLOAD_FILE_SIZE: u64 = 1024 * 1024 * 1024;
+const DEFAULT_CHUNK_SIZE: u64 = 1024 * 1024;
+
+#[derive(Clone)]
+struct UploadSession {
+    target_path: PathBuf,
+    temp_path: PathBuf,
+    expected_size: u64,
+    received_size: u64,
+    overwrite: bool,
+}
 
 pub struct RemoteOpsState {
     root: PathBuf,
     token: String,
+    uploads: Mutex<HashMap<String, UploadSession>>,
 }
 
 impl RemoteOpsState {
     pub fn new(root: PathBuf, token: String) -> Self {
-        Self { root, token }
+        Self {
+            root,
+            token,
+            uploads: Mutex::new(HashMap::new()),
+        }
     }
 
     fn handle<F>(&self, action: &str, token: &str, func: F) -> ActionReply
@@ -94,6 +113,29 @@ impl RemoteOpsState {
 
         Ok(root.join(relative))
     }
+
+    fn allocate_temp_upload_path(&self, upload_id: &str) -> Result<PathBuf> {
+        let temp_dir = self.canonical_root()?.join(".first-rpc-uploads");
+        fs::create_dir_all(&temp_dir)?;
+        Ok(temp_dir.join(format!("{upload_id}.part")))
+    }
+
+    fn replace_file(source: &Path, target: &Path, overwrite: bool) -> Result<()> {
+        if !overwrite && target.exists() {
+            return Err(anyhow!("Target file already exists"));
+        }
+
+        if let Some(parent) = target.parent() {
+            fs::create_dir_all(parent)?;
+        }
+
+        if overwrite && target.exists() {
+            fs::remove_file(target)?;
+        }
+
+        fs::rename(source, target)?;
+        Ok(())
+    }
 }
 
 #[tonic::async_trait]
@@ -117,7 +159,10 @@ impl RemoteOps for RemoteOpsState {
         Ok(Response::new(reply))
     }
 
-    async fn list_dir(&self, request: Request<PathRequest>) -> Result<Response<ActionReply>, Status> {
+    async fn list_dir(
+        &self,
+        request: Request<PathRequest>,
+    ) -> Result<Response<ActionReply>, Status> {
         let request = request.into_inner();
         let reply = self.handle("list_dir", &request.token, || {
             let path = self.resolve_path(&request.path)?;
@@ -133,7 +178,11 @@ impl RemoteOps for RemoteOpsState {
                 let entry = entry?;
                 let metadata = entry.metadata()?;
                 let name = entry.file_name().to_string_lossy().to_string();
-                items.push_str(if metadata.is_dir() { "[dir] " } else { "[file] " });
+                items.push_str(if metadata.is_dir() {
+                    "[dir] "
+                } else {
+                    "[file] "
+                });
                 items.push_str(&name);
                 items.push('\n');
             }
@@ -246,6 +295,166 @@ impl RemoteOps for RemoteOpsState {
         });
         Ok(Response::new(reply))
     }
+
+    async fn upload_init(
+        &self,
+        request: Request<UploadInitRequest>,
+    ) -> Result<Response<ActionReply>, Status> {
+        let request = request.into_inner();
+        let reply = self.handle("upload_init", &request.token, || {
+            if request.path.is_empty() {
+                return Err(anyhow!("Path must not be empty"));
+            }
+            if request.expected_size > MAX_UPLOAD_FILE_SIZE {
+                return Err(anyhow!("File exceeds max upload size of 1GB"));
+            }
+
+            let target_path = self.resolve_path(&request.path)?;
+            let upload_id = format!(
+                "{:x}-{:x}",
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_nanos(),
+                Utc::now().timestamp_nanos_opt().unwrap_or_default()
+            );
+            let temp_path = self.allocate_temp_upload_path(&upload_id)?;
+            if temp_path.exists() {
+                fs::remove_file(&temp_path)?;
+            }
+            fs::File::create(&temp_path)?;
+
+            let session = UploadSession {
+                target_path: target_path.clone(),
+                temp_path,
+                expected_size: request.expected_size,
+                received_size: 0,
+                overwrite: request.overwrite,
+            };
+            self.uploads
+                .lock()
+                .expect("upload mutex poisoned")
+                .insert(upload_id.clone(), session);
+
+            let mut data = BTreeMap::new();
+            data.insert("upload_id".to_string(), upload_id);
+            data.insert(
+                "path".to_string(),
+                target_path.to_string_lossy().replace('\\', "/"),
+            );
+            data.insert("chunk_size".to_string(), DEFAULT_CHUNK_SIZE.to_string());
+            data.insert(
+                "max_upload_size".to_string(),
+                MAX_UPLOAD_FILE_SIZE.to_string(),
+            );
+            Ok(("upload session initialized".to_string(), data))
+        });
+        Ok(Response::new(reply))
+    }
+
+    async fn upload_chunk(
+        &self,
+        request: Request<UploadChunkRequest>,
+    ) -> Result<Response<ActionReply>, Status> {
+        let request = request.into_inner();
+        let reply = self.handle("upload_chunk", &request.token, || {
+            let session = {
+                let uploads = self.uploads.lock().expect("upload mutex poisoned");
+                let session = uploads
+                    .get(&request.upload_id)
+                    .ok_or_else(|| anyhow!("Upload session not found"))?;
+                if request.offset != session.received_size {
+                    return Err(anyhow!("Unexpected upload offset"));
+                }
+                if session.received_size + request.content.len() as u64 > session.expected_size {
+                    return Err(anyhow!("Upload content exceeds expected file size"));
+                }
+                session.clone()
+            };
+
+            let mut output = fs::OpenOptions::new()
+                .append(true)
+                .open(&session.temp_path)?;
+            output.write_all(&request.content)?;
+            output.flush()?;
+
+            let mut uploads = self.uploads.lock().expect("upload mutex poisoned");
+            let stored = uploads
+                .get_mut(&request.upload_id)
+                .ok_or_else(|| anyhow!("Upload session not found"))?;
+            stored.received_size += request.content.len() as u64;
+
+            let mut data = BTreeMap::new();
+            data.insert(
+                "received_size".to_string(),
+                stored.received_size.to_string(),
+            );
+            data.insert(
+                "expected_size".to_string(),
+                stored.expected_size.to_string(),
+            );
+            Ok(("upload chunk stored".to_string(), data))
+        });
+        Ok(Response::new(reply))
+    }
+
+    async fn upload_commit(
+        &self,
+        request: Request<UploadControlRequest>,
+    ) -> Result<Response<ActionReply>, Status> {
+        let request = request.into_inner();
+        let reply = self.handle("upload_commit", &request.token, || {
+            let session = {
+                let uploads = self.uploads.lock().expect("upload mutex poisoned");
+                uploads
+                    .get(&request.upload_id)
+                    .cloned()
+                    .ok_or_else(|| anyhow!("Upload session not found"))?
+            };
+
+            if session.received_size != session.expected_size {
+                return Err(anyhow!("Uploaded size does not match expected size"));
+            }
+            if !session.temp_path.exists() {
+                return Err(anyhow!("Temp upload file does not exist"));
+            }
+
+            Self::replace_file(&session.temp_path, &session.target_path, session.overwrite)?;
+            self.uploads
+                .lock()
+                .expect("upload mutex poisoned")
+                .remove(&request.upload_id);
+
+            let mut data = BTreeMap::new();
+            data.insert(
+                "path".to_string(),
+                session.target_path.to_string_lossy().replace('\\', "/"),
+            );
+            data.insert("size".to_string(), session.expected_size.to_string());
+            Ok(("upload committed".to_string(), data))
+        });
+        Ok(Response::new(reply))
+    }
+
+    async fn upload_abort(
+        &self,
+        request: Request<UploadControlRequest>,
+    ) -> Result<Response<ActionReply>, Status> {
+        let request = request.into_inner();
+        let reply = self.handle("upload_abort", &request.token, || {
+            let session = self
+                .uploads
+                .lock()
+                .expect("upload mutex poisoned")
+                .remove(&request.upload_id)
+                .ok_or_else(|| anyhow!("Upload session not found"))?;
+            if session.temp_path.exists() {
+                fs::remove_file(session.temp_path)?;
+            }
+            Ok(("upload aborted".to_string(), BTreeMap::new()))
+        });
+        Ok(Response::new(reply))
+    }
 }
 
 pub fn hostname() -> String {
@@ -287,7 +496,10 @@ pub async fn list_dir_client(
     token: String,
     path: String,
 ) -> Result<ActionReply> {
-    Ok(client.list_dir(PathRequest { token, path }).await?.into_inner())
+    Ok(client
+        .list_dir(PathRequest { token, path })
+        .await?
+        .into_inner())
 }
 
 pub async fn read_file_client(
@@ -340,6 +552,64 @@ pub async fn grep_file_client(
             max_matches,
             max_line_length,
         })
+        .await?
+        .into_inner())
+}
+
+pub async fn upload_init_client(
+    client: &mut RemoteOpsClient<tonic::transport::Channel>,
+    token: String,
+    path: String,
+    overwrite: bool,
+    expected_size: u64,
+) -> Result<ActionReply> {
+    Ok(client
+        .upload_init(UploadInitRequest {
+            token,
+            path,
+            overwrite,
+            expected_size,
+        })
+        .await?
+        .into_inner())
+}
+
+pub async fn upload_chunk_client(
+    client: &mut RemoteOpsClient<tonic::transport::Channel>,
+    token: String,
+    upload_id: String,
+    offset: u64,
+    content: Vec<u8>,
+) -> Result<ActionReply> {
+    Ok(client
+        .upload_chunk(UploadChunkRequest {
+            token,
+            upload_id,
+            offset,
+            content,
+        })
+        .await?
+        .into_inner())
+}
+
+pub async fn upload_commit_client(
+    client: &mut RemoteOpsClient<tonic::transport::Channel>,
+    token: String,
+    upload_id: String,
+) -> Result<ActionReply> {
+    Ok(client
+        .upload_commit(UploadControlRequest { token, upload_id })
+        .await?
+        .into_inner())
+}
+
+pub async fn upload_abort_client(
+    client: &mut RemoteOpsClient<tonic::transport::Channel>,
+    token: String,
+    upload_id: String,
+) -> Result<ActionReply> {
+    Ok(client
+        .upload_abort(UploadControlRequest { token, upload_id })
         .await?
         .into_inner())
 }

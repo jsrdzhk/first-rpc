@@ -20,7 +20,9 @@ fn arg_value(args: &[String], name: &str, fallback: &str) -> String {
 }
 
 fn print_usage() {
-    println!("Usage: first_rpc_server_rust [--host 127.0.0.1] [--port 18777] [--root .] [--token token]");
+    println!(
+        "Usage: first_rpc_server_rust [--host 127.0.0.1] [--port 18777] [--root .] [--token token]"
+    );
 }
 
 #[tokio::main]

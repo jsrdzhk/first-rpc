@@ -20,6 +20,12 @@ public:
     rpc::ActionReply TailFile(const std::string& token, const std::string& path, std::uint64_t lines, std::uint64_t max_bytes) const;
     rpc::ActionReply GrepFile(const std::string& token, const std::string& path, const std::string& needle,
                               std::uint64_t max_matches, std::uint64_t max_line_length) const;
+    rpc::ActionReply UploadInit(const std::string& token, const std::string& path, bool overwrite,
+                                std::uint64_t expected_size) const;
+    rpc::ActionReply UploadChunk(const std::string& token, const std::string& upload_id, std::uint64_t offset,
+                                 const std::string& content) const;
+    rpc::ActionReply UploadCommit(const std::string& token, const std::string& upload_id) const;
+    rpc::ActionReply UploadAbort(const std::string& token, const std::string& upload_id) const;
 
 private:
     template <typename Request, typename Method>

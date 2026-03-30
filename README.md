@@ -1,29 +1,30 @@
 # first-rpc
 
-`first-rpc` is a standalone C++ project for a cross-platform gRPC client/server used for remote operations and log troubleshooting.
+`first-rpc` is a cross-platform gRPC client/server project for remote operations, log inspection, and controlled file transfer.
 
 ## Goals
 
 - Support Windows, Linux, and macOS for both client and server.
-- Avoid direct dependence on unstable SSH for routine log investigation.
+- Avoid direct dependence on unstable SSH for routine investigation tasks.
 - Keep the first version small, auditable, and easy to deploy.
-- Use C++20 with CMake 4.3.0.
+- Use C++20 with CMake 4.3.0 for the C++ implementation.
 
 ## Current Scope
 
-This initial implementation provides:
+This repository currently provides:
 
-- A gRPC service definition under `proto/`
-- A basic gRPC server with command whitelist style handlers
-- A basic CLI client
-- Initial handlers:
+- A shared protobuf contract under `proto/`
+- A C++ gRPC server and CLI client
+- A Rust gRPC server and CLI client
+- Supported actions:
   - `health_check`
   - `list_dir`
   - `read_file`
-- `tail_file`
-- `grep_file`
+  - `tail_file`
+  - `grep_file`
+  - `upload_file`
 
-Code structure guide for future onboarding:
+Code structure guide:
 
 - [doc/code-structure.md](doc/code-structure.md)
 
@@ -33,12 +34,12 @@ This project follows the official gRPC C++ source-build flow:
 
 - clone `grpc/grpc` with submodules
 - build it with CMake
-- install it into a local prefix inside this repo
+- install it into a local prefix inside this repository
 - point `first-rpc` at that prefix with `CMAKE_PREFIX_PATH`
 
 Current pinned gRPC tag: `v1.80.0`
 
-When `GrpcVersion` is not provided, the deps scripts now auto-select the latest stable gRPC tag that does not end with `-pre...`.
+When `GrpcVersion` is not provided, the dependency scripts auto-select the latest stable gRPC tag that does not end with `-pre...`.
 
 ### Windows
 
@@ -47,7 +48,7 @@ When `GrpcVersion` is not provided, the deps scripts now auto-select the latest 
 .\build.ps1
 ```
 
-Windows scripts default to `ProcessorCount` parallel jobs. You can override it with `-Parallel`, for example:
+Windows scripts default to `ProcessorCount` parallel jobs. You can override that with `-Parallel`, for example:
 
 ```powershell
 .\deps.ps1 -Parallel 12
@@ -60,38 +61,38 @@ Windows scripts default to `ProcessorCount` parallel jobs. You can override it w
 - build it in `third_party/grpc-build/windows-<buildtype>`
 - install it into `third_party/grpc-install/windows-<buildtype>`
 
-如果需要显式指定构建类型：
+To build a specific configuration:
 
 ```powershell
 .\deps.ps1 -BuildType Debug
 .\build.ps1 -BuildType Debug
 ```
 
-目录约定：
+Build directory conventions:
 
-- `Debug` 输出到 `cmake-build-debug`
-- `Release` 输出到 `cmake-build-release`
+- `Debug` uses `cmake-build-debug`
+- `Release` uses `cmake-build-release`
 
-如果依赖已经装好，日常改代码后通常只需要：
+For day-to-day C++ work after dependencies are already installed:
 
 ```powershell
 .\build.ps1
 ```
 
-如果只是想重新安装 gRPC：
+To reinstall gRPC only:
 
 ```powershell
 .\deps.ps1
 ```
 
-如果只是想重新配置或重新编译：
+To reconfigure or rebuild only:
 
 ```powershell
 .\build.ps1 -SkipBuild
 .\build.ps1 -SkipConfigure
 ```
 
-If you want to install the built executables into a user-level PATH directory for direct PowerShell invocation:
+To install the built executables into a user-level PATH directory for direct PowerShell invocation:
 
 ```powershell
 .\install.ps1
@@ -101,7 +102,7 @@ By default this installs binaries into `%LOCALAPPDATA%\first-rpc\bin` and adds t
 
 ### Rust
 
-The repo also includes a Rust implementation under [rust/Cargo.toml](rust/Cargo.toml) that reuses the same protobuf contract and exposes matching executables with `_rust` suffixes:
+The repository also includes a Rust implementation under [rust/Cargo.toml](rust/Cargo.toml) that reuses the same protobuf contract and exposes matching executables with `_rust` suffixes:
 
 - `first_rpc_server_rust`
 - `first_rpc_client_rust`
@@ -139,7 +140,7 @@ Linux / macOS:
 ./build.sh
 ```
 
-在 CentOS 7 上如果你是通过 Software Collections 使用 GCC 11，先进入 devtoolset 环境再执行：
+If your Linux environment requires a newer compiler toolchain, activate that toolchain before running the scripts. For example:
 
 ```bash
 scl enable devtoolset-11 bash
@@ -147,24 +148,22 @@ scl enable devtoolset-11 bash
 ./build.sh
 ```
 
-如果你要显式指定编译器，也可以这样跑：
+You can also specify the compiler explicitly:
 
 ```bash
 ./deps.sh --gcc gcc --gxx g++
 ./build.sh --gcc gcc --gxx g++
 ```
 
-`deps.sh` 会同时做几件事：
+`deps.sh` will:
 
-- 导出 `CC` 和 `CXX`
-- 克隆官方 `grpc/grpc` 源码和子模块
-- 用本机工具链把 gRPC 安装到 `third_party/grpc-install/<platform-buildtype>`
+- export `CC` and `CXX`
+- clone the official `grpc/grpc` source tree and submodules
+- install gRPC into `third_party/grpc-install/<platform-buildtype>`
 
-这对 CentOS 7 很重要，因为即使系统默认还是 `g++ 4.8.5`，你只要先进入 `devtoolset-11`，脚本就会沿用那个 shell 里的 `gcc/g++` 去编译 gRPC 和 protobuf。
+`deps.sh` prints the detected `gcc/g++` versions and fails fast unless both compilers are present, share the same major version, and are at least GCC 11.
 
-`deps.sh` now prints the detected `gcc/g++` versions and fails fast unless both compilers are present, share the same major version, and are at least GCC 11.
-
-依赖装好之后，日常改代码通常只需要：
+For day-to-day C++ work after dependencies are already installed:
 
 ```bash
 ./build.sh
@@ -198,7 +197,7 @@ If the server binary is already in the current working directory or another cust
 ./run_server.sh start --bin ./first_rpc_server --root /var/log --token demo-token
 ```
 
-By default, the helper writes runtime logs and pid files under `server-runtime/<impl>/` in the repo root.
+By default, the helper writes runtime logs and pid files under `server-runtime/<impl>/` in the repository root.
 
 Health check:
 
@@ -212,9 +211,15 @@ Tail a file:
 first_rpc_client --host 127.0.0.1 --port 18777 --token demo-token tail_file --path app.log --lines 50
 ```
 
+Upload a file:
+
+```bash
+first_rpc_client --host 127.0.0.1 --port 18777 --token demo-token upload_file --local app.jar --path deploy/app.jar
+```
+
 ## Smoke Test
 
-After building, you can run a local end-to-end smoke test that starts the server on localhost, prepares a sample file, and verifies `health_check`, `list_dir`, `read_file`, `tail_file`, and `grep_file`.
+After building, you can run a local end-to-end smoke test that starts the server on localhost, prepares sample files, and verifies `health_check`, `list_dir`, `read_file`, `tail_file`, `grep_file`, and `upload_file`.
 
 Windows:
 
@@ -242,22 +247,9 @@ Linux / macOS:
 ./rust/smoke_test_rust.sh --build-type Release
 ```
 
-## CentOS 7 + GCC 15 Notes
-
-Your target combination is feasible with some caveats:
-
-- CentOS 7 ships with glibc 2.17, which is old but still workable.
-- If GCC 15 is installed locally on that CentOS 7 host, C++20 compilation is realistic for this project.
-- You should make sure the source-build step uses your newer toolchain instead of the system `g++ 4.8.5`.
-- The resulting binary will depend on that host's runtime combination, especially `libstdc++`.
-- Running the binary on the same machine where it was built is the safest path.
-- Reusing the binary across different Linux machines may require bundling or statically linking `libstdc++` if runtime compatibility becomes an issue.
-
-This repo no longer depends on Conan. The entire dependency flow is local source build plus local install prefix, which is closer to the gRPC C++ quick start and easier to reason about when old platforms need special toolchains.
-
 ## Next Steps
 
 - Add config file support for server allowlists
-- Add structured module/log discovery
+- Add structured module and log discovery
 - Add stronger auth and audit logging
 - Add service packaging for Linux

@@ -1,13 +1,18 @@
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 #include "first_rpc/client/request_args.hpp"
 #include "first_rpc/client/rpc_client.hpp"
 #include "first_rpc/common/format.hpp"
 
 namespace {
+
+constexpr std::uint64_t kDefaultChunkSize = 1024ULL * 1024ULL;
 
 std::string arg_value(int argc, char** argv, const std::string& name, const std::string& fallback) {
     for (int i = 1; i + 1 < argc; ++i) {
@@ -27,6 +32,11 @@ bool has_arg(int argc, char** argv, const std::string& name) {
     return false;
 }
 
+bool bool_arg(int argc, char** argv, const std::string& name, bool fallback) {
+    const auto value = arg_value(argc, argv, name, fallback ? "true" : "false");
+    return !(value == "false" || value == "0" || value == "no");
+}
+
 void print_usage() {
     std::cout
         << "Usage:\n"
@@ -34,7 +44,8 @@ void print_usage() {
         << "  first_rpc_client --host 127.0.0.1 --port 18777 --token token list_dir --path .\n"
         << "  first_rpc_client --host 127.0.0.1 --port 18777 --token token read_file --path app.log\n"
         << "  first_rpc_client --host 127.0.0.1 --port 18777 --token token tail_file --path app.log --lines 50\n"
-        << "  first_rpc_client --host 127.0.0.1 --port 18777 --token token grep_file --path app.log --needle ERROR\n";
+        << "  first_rpc_client --host 127.0.0.1 --port 18777 --token token grep_file --path app.log --needle ERROR\n"
+        << "  first_rpc_client --host 127.0.0.1 --port 18777 --token token upload_file --local app.jar --path deploy/app.jar\n";
 }
 
 first_rpc::RequestArgs build_request(int argc, char** argv) {
@@ -48,7 +59,7 @@ first_rpc::RequestArgs build_request(int argc, char** argv) {
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
         if (arg == "health_check" || arg == "list_dir" || arg == "read_file" ||
-            arg == "tail_file" || arg == "grep_file") {
+            arg == "tail_file" || arg == "grep_file" || arg == "upload_file") {
             request.action = arg;
             break;
         }
@@ -86,7 +97,83 @@ first_rpc::RequestArgs build_request(int argc, char** argv) {
         return request;
     }
 
+    if (request.action == "upload_file") {
+        request.params["local"] = arg_value(argc, argv, "--local", "");
+        request.params["chunk_size"] = arg_value(argc, argv, "--chunk-size", std::to_string(kDefaultChunkSize));
+        request.params["overwrite"] = bool_arg(argc, argv, "--overwrite", true) ? "true" : "false";
+        return request;
+    }
+
     throw std::runtime_error("Unsupported action: " + request.action);
+}
+
+first_rpc::rpc::ActionReply upload_file(const first_rpc::RpcClient& client, const first_rpc::RequestArgs& request) {
+    const auto local_path = std::filesystem::path(request.params.at("local"));
+    if (request.params.at("path").empty()) {
+        throw std::runtime_error("Remote --path is required for upload_file");
+    }
+    if (request.params.at("local").empty()) {
+        throw std::runtime_error("Local --local path is required for upload_file");
+    }
+    if (!std::filesystem::exists(local_path)) {
+        throw std::runtime_error("Local file does not exist");
+    }
+    if (!std::filesystem::is_regular_file(local_path)) {
+        throw std::runtime_error("Local path is not a regular file");
+    }
+
+    const auto expected_size = std::filesystem::file_size(local_path);
+    const auto overwrite = request.params.at("overwrite") == "true";
+    const auto chunk_size = static_cast<std::size_t>(std::stoull(request.params.at("chunk_size")));
+    if (chunk_size == 0) {
+        throw std::runtime_error("Chunk size must be greater than zero");
+    }
+
+    auto init_reply = client.UploadInit(request.token, request.params.at("path"), overwrite, expected_size);
+    if (!init_reply.ok()) {
+        return init_reply;
+    }
+
+    const auto upload_id_it = init_reply.data().find("upload_id");
+    if (upload_id_it == init_reply.data().end() || upload_id_it->second.empty()) {
+        throw std::runtime_error("Upload init reply did not contain upload_id");
+    }
+    const auto upload_id = upload_id_it->second;
+
+    std::ifstream input(local_path, std::ios::binary);
+    if (!input) {
+        throw std::runtime_error("Failed to open local file");
+    }
+
+    std::vector<char> buffer(chunk_size);
+    std::uint64_t offset = 0;
+
+    try {
+        while (input) {
+            input.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
+            const auto read_count = input.gcount();
+            if (read_count <= 0) {
+                break;
+            }
+
+            auto chunk_reply = client.UploadChunk(
+                request.token,
+                upload_id,
+                offset,
+                std::string(buffer.data(), static_cast<std::size_t>(read_count))
+            );
+            if (!chunk_reply.ok()) {
+                client.UploadAbort(request.token, upload_id);
+                return chunk_reply;
+            }
+            offset += static_cast<std::uint64_t>(read_count);
+        }
+
+        return client.UploadCommit(request.token, upload_id);
+    } catch (...) {
+        client.UploadAbort(request.token, upload_id);
+        throw;
+    }
 }
 
 }  // namespace
@@ -120,6 +207,8 @@ int main(int argc, char** argv) {
             response = client.GrepFile(request.token, request.params.at("path"), request.params.at("needle"),
                                        static_cast<std::uint64_t>(std::stoull(request.params.at("max_matches"))),
                                        static_cast<std::uint64_t>(std::stoull(request.params.at("max_line_length"))));
+        } else if (request.action == "upload_file") {
+            response = upload_file(client, request);
         } else {
             throw std::runtime_error("Unsupported action: " + request.action);
         }

@@ -79,6 +79,8 @@ $SmokeRoot = Join-Path $RepoRoot "build\smoke-test"
 $ServerStdoutLog = Join-Path $SmokeRoot "server.stdout.log"
 $ServerStderrLog = Join-Path $SmokeRoot "server.stderr.log"
 $SampleFile = Join-Path $SmokeRoot "sample.log"
+$UploadSourceFile = Join-Path $SmokeRoot "upload-source.txt"
+$UploadOverwriteFile = Join-Path $SmokeRoot "upload-overwrite.txt"
 
 New-Item -ItemType Directory -Force -Path $SmokeRoot | Out-Null
 @(
@@ -87,6 +89,8 @@ New-Item -ItemType Directory -Force -Path $SmokeRoot | Out-Null
     "ERROR target line"
     "omega line"
 ) | Set-Content -LiteralPath $SampleFile -Encoding utf8
+"upload content v1" | Set-Content -LiteralPath $UploadSourceFile -Encoding utf8
+"upload content v2" | Set-Content -LiteralPath $UploadOverwriteFile -Encoding utf8
 
 $server = $null
 
@@ -118,6 +122,19 @@ try {
 
     $grepFile = Invoke-Client -ClientPath $ClientPath -Arguments ($commonArgs + @("grep_file", "--path", "sample.log", "--needle", "ERROR"))
     Assert-Contains -Text $grepFile -Expected "ERROR target line" -Label "grep_file"
+
+    $upload = Invoke-Client -ClientPath $ClientPath -Arguments ($commonArgs + @("upload_file", "--local", $UploadSourceFile, "--path", "uploads\received.txt"))
+    Assert-Contains -Text $upload -Expected "ok: true" -Label "upload_file"
+    Assert-Contains -Text $upload -Expected "summary: upload committed" -Label "upload_file"
+
+    $uploadedContent = Invoke-Client -ClientPath $ClientPath -Arguments ($commonArgs + @("read_file", "--path", "uploads\received.txt"))
+    Assert-Contains -Text $uploadedContent -Expected "upload content v1" -Label "read uploaded file"
+
+    $overwriteUpload = Invoke-Client -ClientPath $ClientPath -Arguments ($commonArgs + @("upload_file", "--local", $UploadOverwriteFile, "--path", "uploads\received.txt"))
+    Assert-Contains -Text $overwriteUpload -Expected "ok: true" -Label "overwrite upload_file"
+
+    $overwrittenContent = Invoke-Client -ClientPath $ClientPath -Arguments ($commonArgs + @("read_file", "--path", "uploads\received.txt"))
+    Assert-Contains -Text $overwrittenContent -Expected "upload content v2" -Label "read overwritten file"
 
     Write-Host "Smoke test passed." -ForegroundColor Green
 } finally {
