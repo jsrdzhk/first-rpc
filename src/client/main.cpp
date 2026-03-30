@@ -45,7 +45,8 @@ void print_usage() {
         << "  first_rpc_client --host 127.0.0.1 --port 18777 --token token read_file --path app.log\n"
         << "  first_rpc_client --host 127.0.0.1 --port 18777 --token token tail_file --path app.log --lines 50\n"
         << "  first_rpc_client --host 127.0.0.1 --port 18777 --token token grep_file --path app.log --needle ERROR\n"
-        << "  first_rpc_client --host 127.0.0.1 --port 18777 --token token upload_file --local app.jar --path deploy/app.jar\n";
+        << "  first_rpc_client --host 127.0.0.1 --port 18777 --token token upload_file --local app.jar --path deploy/app.jar\n"
+        << "  first_rpc_client --host 127.0.0.1 --port 18777 --token token exec --command \"pwd\" --working-dir .\n";
 }
 
 first_rpc::RequestArgs build_request(int argc, char** argv) {
@@ -59,7 +60,7 @@ first_rpc::RequestArgs build_request(int argc, char** argv) {
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
         if (arg == "health_check" || arg == "list_dir" || arg == "read_file" ||
-            arg == "tail_file" || arg == "grep_file" || arg == "upload_file") {
+            arg == "tail_file" || arg == "grep_file" || arg == "upload_file" || arg == "exec") {
             request.action = arg;
             break;
         }
@@ -101,6 +102,14 @@ first_rpc::RequestArgs build_request(int argc, char** argv) {
         request.params["local"] = arg_value(argc, argv, "--local", "");
         request.params["chunk_size"] = arg_value(argc, argv, "--chunk-size", std::to_string(kDefaultChunkSize));
         request.params["overwrite"] = bool_arg(argc, argv, "--overwrite", true) ? "true" : "false";
+        return request;
+    }
+
+    if (request.action == "exec") {
+        request.params["command"] = arg_value(argc, argv, "--command", "");
+        request.params["working_dir"] = arg_value(argc, argv, "--working-dir", ".");
+        request.params["timeout_ms"] = arg_value(argc, argv, "--timeout-ms", "30000");
+        request.params["max_output_bytes"] = arg_value(argc, argv, "--max-output-bytes", "65536");
         return request;
     }
 
@@ -209,6 +218,10 @@ int main(int argc, char** argv) {
                                        static_cast<std::uint64_t>(std::stoull(request.params.at("max_line_length"))));
         } else if (request.action == "upload_file") {
             response = upload_file(client, request);
+        } else if (request.action == "exec") {
+            response = client.Exec(request.token, request.params.at("command"), request.params.at("working_dir"),
+                                   static_cast<std::uint64_t>(std::stoull(request.params.at("timeout_ms"))),
+                                   static_cast<std::uint64_t>(std::stoull(request.params.at("max_output_bytes"))));
         } else {
             throw std::runtime_error("Unsupported action: " + request.action);
         }

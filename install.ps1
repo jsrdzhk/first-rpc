@@ -59,7 +59,7 @@ function Resolve-RustBinaries {
     foreach ($name in $names) {
         $candidate = Join-Path $RepoRoot "rust\target\$profileDir\$name"
         if (-not (Test-Path -LiteralPath $candidate)) {
-            throw "Unable to find $name for build type $BuildType. Run .\rust\rust_build.ps1 first."
+            throw "Unable to find $name for build type $BuildType. Run .\rust\build.ps1 first."
         }
         $resolved += $candidate
     }

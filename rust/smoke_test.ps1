@@ -28,7 +28,7 @@ function Resolve-BinaryPath {
         return $candidate
     }
 
-    throw "Unable to find binary $Name.exe for build type $BuildType. Run .\rust\rust_build.ps1 first."
+    throw "Unable to find binary $Name.exe for build type $BuildType. Run .\rust\build.ps1 first."
 }
 
 function Invoke-Client {
@@ -112,6 +112,11 @@ try {
 
     $grepFile = Invoke-Client -ClientPath $ClientPath -Arguments ($commonArgs + @("grep_file", "--path", "sample.log", "--needle", "ERROR"))
     Assert-Contains -Text $grepFile -Expected "ERROR target line" -Label "grep_file"
+
+    $execReply = Invoke-Client -ClientPath $ClientPath -Arguments ($commonArgs + @("exec", "--command", "type sample.log", "--working-dir", "."))
+    Assert-Contains -Text $execReply -Expected "ok: true" -Label "exec"
+    Assert-Contains -Text $execReply -Expected "summary: command completed successfully" -Label "exec"
+    Assert-Contains -Text $execReply -Expected "ERROR target line" -Label "exec"
 
     $upload = Invoke-Client -ClientPath $ClientPath -Arguments ($commonArgs + @("upload_file", "--local", $UploadSourceFile, "--path", "uploads\received.txt"))
     Assert-Contains -Text $upload -Expected "ok: true" -Label "upload_file"

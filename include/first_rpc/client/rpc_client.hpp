@@ -26,6 +26,8 @@ public:
                                  const std::string& content) const;
     rpc::ActionReply UploadCommit(const std::string& token, const std::string& upload_id) const;
     rpc::ActionReply UploadAbort(const std::string& token, const std::string& upload_id) const;
+    rpc::ActionReply Exec(const std::string& token, const std::string& command, const std::string& working_dir,
+                          std::uint64_t timeout_ms, std::uint64_t max_output_bytes) const;
 
 private:
     template <typename Request, typename Method>

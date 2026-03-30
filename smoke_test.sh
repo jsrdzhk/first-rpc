@@ -142,6 +142,11 @@ assert_contains "$tail_file" "omega line" "tail_file"
 grep_file="$("$CLIENT_PATH" "${COMMON_ARGS[@]}" grep_file --path sample.log --needle ERROR)"
 assert_contains "$grep_file" "ERROR target line" "grep_file"
 
+exec_reply="$("$CLIENT_PATH" "${COMMON_ARGS[@]}" exec --command "cat sample.log" --working-dir .)"
+assert_contains "$exec_reply" "ok: true" "exec"
+assert_contains "$exec_reply" "summary: command completed successfully" "exec"
+assert_contains "$exec_reply" "ERROR target line" "exec"
+
 upload_file="$("$CLIENT_PATH" "${COMMON_ARGS[@]}" upload_file --local "$UPLOAD_SOURCE_FILE" --path uploads/received.txt)"
 assert_contains "$upload_file" "ok: true" "upload_file"
 assert_contains "$upload_file" "summary: upload committed" "upload_file"

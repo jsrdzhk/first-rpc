@@ -211,7 +211,7 @@ resolve_binary_path() {
       echo "$candidate"
       return 0
     fi
-    echo "Unable to find Rust server binary for build type $BUILD_TYPE. Run ./rust/rust_build.sh first." >&2
+    echo "Unable to find Rust server binary for build type $BUILD_TYPE. Run ./rust/build.sh first." >&2
     exit 1
   fi
 

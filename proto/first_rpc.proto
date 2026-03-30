@@ -51,6 +51,14 @@ message UploadControlRequest {
   string upload_id = 2;
 }
 
+message ExecRequest {
+  string token = 1;
+  string command = 2;
+  string working_dir = 3;
+  uint64 timeout_ms = 4;
+  uint64 max_output_bytes = 5;
+}
+
 message ActionReply {
   bool ok = 1;
   string action = 2;
@@ -70,4 +78,5 @@ service RemoteOps {
   rpc UploadChunk(UploadChunkRequest) returns (ActionReply);
   rpc UploadCommit(UploadControlRequest) returns (ActionReply);
   rpc UploadAbort(UploadControlRequest) returns (ActionReply);
+  rpc Exec(ExecRequest) returns (ActionReply);
 }

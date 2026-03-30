@@ -118,3 +118,51 @@ TEST_CASE("upload RPC rejects unexpected offsets", "[upload]") {
     REQUIRE_FALSE(chunk_reply.ok());
     REQUIRE(chunk_reply.error() == "Unexpected upload offset");
 }
+
+#ifndef _WIN32
+TEST_CASE("upload RPC preserves target permissions when overwriting", "[upload]") {
+    TempDir temp_dir;
+    const auto target = temp_dir.path / "uploads" / "script.sh";
+    fs::create_directories(target.parent_path());
+    {
+        std::ofstream output(target);
+        output << "#!/bin/sh\n";
+    }
+    fs::permissions(target,
+                    fs::perms::owner_read | fs::perms::owner_write | fs::perms::owner_exec |
+                    fs::perms::group_read | fs::perms::group_exec,
+                    fs::perm_options::replace);
+
+    first_rpc::RemoteOpsServiceImpl service(temp_dir.path, "");
+    grpc::ServerContext context;
+
+    first_rpc::rpc::UploadInitRequest init_request;
+    init_request.set_path("uploads/script.sh");
+    init_request.set_expected_size(8);
+    init_request.set_overwrite(true);
+
+    first_rpc::rpc::ActionReply init_reply;
+    REQUIRE(service.UploadInit(&context, &init_request, &init_reply).ok());
+    REQUIRE(init_reply.ok());
+
+    first_rpc::rpc::UploadChunkRequest chunk_request;
+    chunk_request.set_upload_id(init_reply.data().at("upload_id"));
+    chunk_request.set_offset(0);
+    chunk_request.set_content("echo ok\n");
+
+    first_rpc::rpc::ActionReply chunk_reply;
+    REQUIRE(service.UploadChunk(&context, &chunk_request, &chunk_reply).ok());
+    REQUIRE(chunk_reply.ok());
+
+    first_rpc::rpc::UploadControlRequest commit_request;
+    commit_request.set_upload_id(init_reply.data().at("upload_id"));
+
+    first_rpc::rpc::ActionReply commit_reply;
+    REQUIRE(service.UploadCommit(&context, &commit_request, &commit_reply).ok());
+    REQUIRE(commit_reply.ok());
+
+    const auto permissions = fs::status(target).permissions();
+    REQUIRE((permissions & fs::perms::owner_exec) != fs::perms::none);
+    REQUIRE((permissions & fs::perms::group_exec) != fs::perms::none);
+}
+#endif

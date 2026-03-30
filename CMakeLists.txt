@@ -78,6 +78,7 @@ add_custom_command(
 add_library(first_rpc_common
     src/common/system_utils.cpp
     src/common/file_ops.cpp
+    src/common/exec_utils.cpp
     src/common/format.cpp
     ${FIRST_RPC_PROTO_SRCS}
 )
@@ -127,6 +128,7 @@ if(BUILD_TESTING)
         tests/cpp/file_ops_tests.cpp
         tests/cpp/format_tests.cpp
         tests/cpp/upload_service_tests.cpp
+        tests/cpp/exec_service_tests.cpp
         src/server/service_impl.cpp
     )
 

@@ -1,6 +1,6 @@
 # first-rpc
 
-`first-rpc` is a cross-platform gRPC client/server project for remote operations, log inspection, and controlled file transfer.
+`first-rpc` is a cross-platform gRPC client/server project for remote operations, log inspection, controlled file transfer, and trusted remote command execution.
 
 ## Goals
 
@@ -23,6 +23,7 @@ This repository currently provides:
   - `tail_file`
   - `grep_file`
   - `upload_file`
+  - `exec`
 
 Code structure guide:
 
@@ -130,25 +131,25 @@ Or use the helper scripts:
 Windows:
 
 ```powershell
-.\rust\rust_build.ps1 -BuildType Release
+.\rust\build.ps1 -BuildType Release
 ```
 
 To build and run Rust unit tests in one step:
 
 ```powershell
-.\rust\rust_build.ps1 -RunTests
+.\rust\build.ps1 -RunTests
 ```
 
 Linux / macOS:
 
 ```bash
-./rust/rust_build.sh --build-type Release
+./rust/build.sh --build-type Release
 ```
 
 To build and run Rust unit tests in one step:
 
 ```bash
-./rust/rust_build.sh --run-tests
+./rust/build.sh --run-tests
 ```
 
 ### Linux / macOS
@@ -241,9 +242,31 @@ Upload a file:
 first_rpc_client --host 127.0.0.1 --port 18777 --token demo-token upload_file --local app.jar --path deploy/app.jar
 ```
 
+Execute a command inside the configured root:
+
+```bash
+first_rpc_client --host 127.0.0.1 --port 18777 --token demo-token exec --command "pwd" --working-dir .
+```
+
+`exec` returns:
+
+- `stdout`
+- `stderr`
+- `exit_code`
+- `timed_out`
+- the resolved `working_dir`
+
+Default `exec` behavior:
+
+- default timeout: `30000` ms
+- default output cap: `65536` bytes for each of `stdout` and `stderr`
+- when the timeout is hit, the server terminates the command, returns `timed_out=true`, and reports exit code `124`
+
+`exec` only constrains the resolved working directory under `--root`. The executed command still runs with the server process account and can access anything that account can reach. Treat it as a controlled convenience for trusted environments, not a sandbox.
+
 ## Smoke Test
 
-After building, you can run a local end-to-end smoke test that starts the server on localhost, prepares sample files, and verifies `health_check`, `list_dir`, `read_file`, `tail_file`, `grep_file`, and `upload_file`.
+After building, you can run a local end-to-end smoke test that starts the server on localhost, prepares sample files, and verifies `health_check`, `list_dir`, `read_file`, `tail_file`, `grep_file`, `upload_file`, and `exec`.
 
 Windows:
 
@@ -262,13 +285,13 @@ Rust smoke tests:
 Windows:
 
 ```powershell
-.\rust\smoke_test_rust.ps1 -BuildType Release
+.\rust\smoke_test.ps1 -BuildType Release
 ```
 
 Linux / macOS:
 
 ```bash
-./rust/smoke_test_rust.sh --build-type Release
+./rust/smoke_test.sh --build-type Release
 ```
 
 ## Unit Tests

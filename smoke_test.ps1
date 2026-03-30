@@ -123,6 +123,12 @@ try {
     $grepFile = Invoke-Client -ClientPath $ClientPath -Arguments ($commonArgs + @("grep_file", "--path", "sample.log", "--needle", "ERROR"))
     Assert-Contains -Text $grepFile -Expected "ERROR target line" -Label "grep_file"
 
+    $execCommand = "type sample.log"
+    $execReply = Invoke-Client -ClientPath $ClientPath -Arguments ($commonArgs + @("exec", "--command", $execCommand, "--working-dir", "."))
+    Assert-Contains -Text $execReply -Expected "ok: true" -Label "exec"
+    Assert-Contains -Text $execReply -Expected "summary: command completed successfully" -Label "exec"
+    Assert-Contains -Text $execReply -Expected "ERROR target line" -Label "exec"
+
     $upload = Invoke-Client -ClientPath $ClientPath -Arguments ($commonArgs + @("upload_file", "--local", $UploadSourceFile, "--path", "uploads\received.txt"))
     Assert-Contains -Text $upload -Expected "ok: true" -Label "upload_file"
     Assert-Contains -Text $upload -Expected "summary: upload committed" -Label "upload_file"

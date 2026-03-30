@@ -15,7 +15,7 @@ SKIP_BUILD="${SKIP_BUILD:-0}"
 
 usage() {
   cat <<'EOF'
-Usage: ./rust/rust_build.sh [options]
+Usage: ./rust/build.sh [options]
 
 Options:
   --build-type <Debug|Release>

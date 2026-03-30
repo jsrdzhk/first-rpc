@@ -4,12 +4,14 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <optional>
 #include <random>
 #include <stdexcept>
 #include <sstream>
 #include <utility>
 
 #include "first_rpc/common/file_ops.hpp"
+#include "first_rpc/common/exec_utils.hpp"
 #include "first_rpc/common/system_utils.hpp"
 
 namespace first_rpc {
@@ -18,6 +20,8 @@ namespace {
 
 constexpr std::uint64_t kMaxUploadFileSize = 1024ULL * 1024ULL * 1024ULL;
 constexpr std::size_t kDefaultChunkSize = 1024ULL * 1024ULL;
+constexpr std::uint64_t kDefaultExecTimeoutMs = 30'000ULL;
+constexpr std::uint64_t kDefaultExecOutputBytes = 65'536ULL;
 
 }  // namespace
 
@@ -72,15 +76,20 @@ std::string RemoteOpsServiceImpl::generate_upload_id() {
 
 void RemoteOpsServiceImpl::replace_file(const std::filesystem::path& source, const std::filesystem::path& target,
                                         bool overwrite) {
+    std::optional<std::filesystem::perms> preserved_permissions;
     if (!overwrite && std::filesystem::exists(target)) {
         throw std::runtime_error("Target file already exists");
     }
 
     std::filesystem::create_directories(target.parent_path());
     if (overwrite && std::filesystem::exists(target)) {
+        preserved_permissions = std::filesystem::status(target).permissions();
         std::filesystem::remove(target);
     }
     std::filesystem::rename(source, target);
+    if (preserved_permissions.has_value()) {
+        std::filesystem::permissions(target, *preserved_permissions, std::filesystem::perm_options::replace);
+    }
 }
 
 grpc::Status RemoteOpsServiceImpl::HealthCheck(grpc::ServerContext*, const rpc::HealthCheckRequest* request,
@@ -269,6 +278,36 @@ grpc::Status RemoteOpsServiceImpl::UploadAbort(grpc::ServerContext*, const rpc::
         }
 
         reply->set_summary("upload aborted");
+    });
+}
+
+grpc::Status RemoteOpsServiceImpl::Exec(grpc::ServerContext*, const rpc::ExecRequest* request,
+                                        rpc::ActionReply* reply) {
+    return Handle("exec", request->token(), reply, [&] {
+        auto result = execute_command(
+            root_,
+            request->working_dir(),
+            request->command(),
+            request->timeout_ms() == 0 ? kDefaultExecTimeoutMs : request->timeout_ms(),
+            static_cast<std::size_t>(request->max_output_bytes() == 0
+                ? kDefaultExecOutputBytes
+                : request->max_output_bytes())
+        );
+
+        if (result.timed_out) {
+            reply->set_summary("command timed out");
+        } else if (result.exit_code == 0) {
+            reply->set_summary("command completed successfully");
+        } else {
+            reply->set_summary("command completed with non-zero exit code");
+        }
+
+        (*reply->mutable_data())["command"] = request->command();
+        (*reply->mutable_data())["working_dir"] = result.working_dir.generic_string();
+        (*reply->mutable_data())["exit_code"] = std::to_string(result.exit_code);
+        (*reply->mutable_data())["timed_out"] = result.timed_out ? "true" : "false";
+        (*reply->mutable_data())["stdout"] = std::move(result.stdout_text);
+        (*reply->mutable_data())["stderr"] = std::move(result.stderr_text);
     });
 }
 

@@ -2,23 +2,29 @@ use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Component, Path, PathBuf};
+use std::process::Stdio;
 use std::sync::Mutex;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::{anyhow, Result};
 use chrono::Utc;
 use hostname::get;
+use tokio::io::AsyncReadExt;
+use tokio::process::Command;
+use tokio::time::{timeout, Duration};
 use tonic::{Request, Response, Status};
 
 use crate::generated::rpc::remote_ops_client::RemoteOpsClient;
 use crate::generated::rpc::remote_ops_server::RemoteOps;
 use crate::generated::rpc::{
     ActionReply, GrepFileRequest, HealthCheckRequest, PathRequest, ReadFileRequest,
-    TailFileRequest, UploadChunkRequest, UploadControlRequest, UploadInitRequest,
+    TailFileRequest, UploadChunkRequest, UploadControlRequest, UploadInitRequest, ExecRequest,
 };
 
 const MAX_UPLOAD_FILE_SIZE: u64 = 1024 * 1024 * 1024;
 const DEFAULT_CHUNK_SIZE: u64 = 1024 * 1024;
+const DEFAULT_EXEC_TIMEOUT_MS: u64 = 30_000;
+const DEFAULT_EXEC_OUTPUT_BYTES: usize = 65_536;
 
 #[derive(Clone)]
 struct UploadSession {
@@ -121,6 +127,12 @@ impl RemoteOpsState {
     }
 
     fn replace_file(source: &Path, target: &Path, overwrite: bool) -> Result<()> {
+        let preserved_permissions = if overwrite && target.exists() {
+            Some(fs::metadata(target)?.permissions())
+        } else {
+            None
+        };
+
         if !overwrite && target.exists() {
             return Err(anyhow!("Target file already exists"));
         }
@@ -134,7 +146,117 @@ impl RemoteOpsState {
         }
 
         fs::rename(source, target)?;
+        if let Some(permissions) = preserved_permissions {
+            fs::set_permissions(target, permissions)?;
+        }
         Ok(())
+    }
+
+    async fn execute_command(
+        &self,
+        working_dir: String,
+        command: String,
+        timeout_ms: u64,
+        max_output_bytes: u64,
+    ) -> Result<(String, BTreeMap<String, String>)> {
+        if command.trim().is_empty() {
+            return Err(anyhow!("Command must not be empty"));
+        }
+
+        let resolved_working_dir = self.resolve_path(if working_dir.is_empty() {
+            "."
+        } else {
+            working_dir.as_str()
+        })?;
+
+        let effective_timeout_ms = if timeout_ms == 0 {
+            DEFAULT_EXEC_TIMEOUT_MS
+        } else {
+            timeout_ms
+        };
+        let effective_max_output = if max_output_bytes == 0 {
+            DEFAULT_EXEC_OUTPUT_BYTES
+        } else {
+            max_output_bytes as usize
+        };
+
+        let mut process = if cfg!(target_os = "windows") {
+            let mut cmd = Command::new("cmd");
+            cmd.args(["/d", "/s", "/c", command.as_str()]);
+            cmd
+        } else {
+            let mut cmd = Command::new("sh");
+            cmd.args(["-lc", command.as_str()]);
+            cmd
+        };
+
+        process
+            .current_dir(&resolved_working_dir)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+
+        let mut child = process.spawn()?;
+        let mut stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| anyhow!("Failed to capture command stdout"))?;
+        let mut stderr = child
+            .stderr
+            .take()
+            .ok_or_else(|| anyhow!("Failed to capture command stderr"))?;
+
+        let stdout_task = tokio::spawn(async move {
+            let mut buffer = Vec::new();
+            stdout.read_to_end(&mut buffer).await.map(|_| buffer)
+        });
+        let stderr_task = tokio::spawn(async move {
+            let mut buffer = Vec::new();
+            stderr.read_to_end(&mut buffer).await.map(|_| buffer)
+        });
+
+        let (exit_code, timed_out) = match timeout(Duration::from_millis(effective_timeout_ms), child.wait()).await {
+            Ok(status_result) => (status_result?.code().unwrap_or(1), false),
+            Err(_) => {
+                child.kill().await?;
+                let status = child.wait().await?;
+                (status.code().unwrap_or(124), true)
+            }
+        };
+
+        let stdout_bytes = stdout_task.await??;
+        let stderr_bytes = stderr_task.await??;
+
+        let mut data = BTreeMap::new();
+        data.insert("command".to_string(), command);
+        data.insert(
+            "working_dir".to_string(),
+            resolved_working_dir.to_string_lossy().replace('\\', "/"),
+        );
+        data.insert("exit_code".to_string(), exit_code.to_string());
+        data.insert("timed_out".to_string(), if timed_out { "true" } else { "false" }.to_string());
+        data.insert(
+            "stdout".to_string(),
+            String::from_utf8_lossy(&stdout_bytes)
+                .chars()
+                .take(effective_max_output)
+                .collect(),
+        );
+        data.insert(
+            "stderr".to_string(),
+            String::from_utf8_lossy(&stderr_bytes)
+                .chars()
+                .take(effective_max_output)
+                .collect(),
+        );
+
+        let summary = if timed_out {
+            "command timed out".to_string()
+        } else if exit_code == 0 {
+            "command completed successfully".to_string()
+        } else {
+            "command completed with non-zero exit code".to_string()
+        };
+        Ok((summary, data))
     }
 }
 
@@ -455,6 +577,53 @@ impl RemoteOps for RemoteOpsState {
         });
         Ok(Response::new(reply))
     }
+
+    async fn exec(
+        &self,
+        request: Request<ExecRequest>,
+    ) -> Result<Response<ActionReply>, Status> {
+        let started = Instant::now();
+        let request = request.into_inner();
+        let mut reply = ActionReply {
+            ok: false,
+            action: "exec".to_string(),
+            summary: String::new(),
+            data: Default::default(),
+            error: String::new(),
+            duration_ms: 0,
+        };
+
+        let outcome = if !self.token.is_empty() && request.token != self.token {
+            Err(anyhow!("Unauthorized"))
+        } else {
+            self.execute_command(
+                request.working_dir,
+                request.command,
+                request.timeout_ms,
+                request.max_output_bytes,
+            )
+            .await
+        };
+
+        match outcome {
+            Ok((summary, data)) => {
+                reply.ok = true;
+                reply.summary = summary;
+                reply.data = data.into_iter().collect();
+            }
+            Err(err) => {
+                reply.ok = false;
+                reply.summary = "request failed".to_string();
+                reply.error = err.to_string();
+            }
+        }
+
+        if reply.summary.is_empty() && reply.ok {
+            reply.summary = "request succeeded".to_string();
+        }
+        reply.duration_ms = started.elapsed().as_millis() as u64;
+        Ok(Response::new(reply))
+    }
 }
 
 pub fn hostname() -> String {
@@ -614,14 +783,34 @@ pub async fn upload_abort_client(
         .into_inner())
 }
 
+pub async fn exec_client(
+    client: &mut RemoteOpsClient<tonic::transport::Channel>,
+    token: String,
+    command: String,
+    working_dir: String,
+    timeout_ms: u64,
+    max_output_bytes: u64,
+) -> Result<ActionReply> {
+    Ok(client
+        .exec(ExecRequest {
+            token,
+            command,
+            working_dir,
+            timeout_ms,
+            max_output_bytes,
+        })
+        .await?
+        .into_inner())
+}
+
 #[cfg(test)]
 mod tests {
     use tempfile::tempdir;
     use tonic::Request;
 
     use crate::generated::rpc::{
-        GrepFileRequest, PathRequest, ReadFileRequest, UploadChunkRequest, UploadControlRequest,
-        UploadInitRequest,
+        ExecRequest, GrepFileRequest, PathRequest, ReadFileRequest, UploadChunkRequest,
+        UploadControlRequest, UploadInitRequest,
     };
 
     use super::RemoteOps;
@@ -772,6 +961,66 @@ mod tests {
         assert!(chunk_reply.error.contains("Unexpected upload offset"));
     }
 
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn upload_preserves_existing_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempdir().expect("tempdir");
+        let target = dir.path().join("uploads/script.sh");
+        std::fs::create_dir_all(target.parent().expect("parent")).expect("create dir");
+        std::fs::write(&target, "#!/bin/sh\n").expect("seed target");
+        std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o750))
+            .expect("set executable permissions");
+
+        let state = RemoteOpsState::new(dir.path().to_path_buf(), String::new());
+
+        let init_reply = state
+            .upload_init(Request::new(UploadInitRequest {
+                token: String::new(),
+                path: "uploads/script.sh".to_string(),
+                overwrite: true,
+                expected_size: 8,
+            }))
+            .await
+            .expect("upload init")
+            .into_inner();
+        let upload_id = init_reply
+            .data
+            .get("upload_id")
+            .cloned()
+            .expect("upload id");
+
+        let chunk_reply = state
+            .upload_chunk(Request::new(UploadChunkRequest {
+                token: String::new(),
+                upload_id: upload_id.clone(),
+                offset: 0,
+                content: b"echo ok\n".to_vec(),
+            }))
+            .await
+            .expect("upload chunk")
+            .into_inner();
+        assert!(chunk_reply.ok);
+
+        let commit_reply = state
+            .upload_commit(Request::new(UploadControlRequest {
+                token: String::new(),
+                upload_id,
+            }))
+            .await
+            .expect("upload commit")
+            .into_inner();
+        assert!(commit_reply.ok);
+
+        let mode = std::fs::metadata(&target)
+            .expect("metadata")
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(mode, 0o750);
+    }
+
     #[tokio::test]
     async fn file_rpc_reads_expected_content() {
         let dir = tempdir().expect("tempdir");
@@ -815,5 +1064,35 @@ mod tests {
             .into_inner();
         assert!(list_reply.ok);
         assert!(list_reply.data["items"].contains("sample.log"));
+    }
+
+    #[tokio::test]
+    async fn exec_returns_stdout_and_exit_code() {
+        let dir = tempdir().expect("tempdir");
+        let state = RemoteOpsState::new(dir.path().to_path_buf(), String::new());
+
+        let command = if cfg!(target_os = "windows") {
+            "echo exec smoke"
+        } else {
+            "printf 'exec smoke\\n'"
+        };
+
+        let reply = state
+            .exec(Request::new(ExecRequest {
+                token: String::new(),
+                command: command.to_string(),
+                working_dir: ".".to_string(),
+                timeout_ms: 2_000,
+                max_output_bytes: 4_096,
+            }))
+            .await
+            .expect("exec command")
+            .into_inner();
+
+        assert!(reply.ok);
+        assert_eq!(reply.summary, "command completed successfully");
+        assert_eq!(reply.data["timed_out"], "false");
+        assert_eq!(reply.data["exit_code"], "0");
+        assert!(reply.data["stdout"].contains("exec smoke"));
     }
 }

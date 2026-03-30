@@ -192,6 +192,7 @@ dependencies = [
  "hostname",
  "prost",
  "protoc-bin-vendored",
+ "tempfile",
  "tokio",
  "tonic",
  "tonic-prost",

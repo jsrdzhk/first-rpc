@@ -13,7 +13,7 @@ This document is the main onboarding guide for future Codex sessions and develop
 - C++20 + source-built gRPC C++
 - Rust + `tonic/prost`
 
-Both implementations reuse the same protobuf contract and expose aligned client/server capabilities for remote inspection and controlled file upload.
+Both implementations reuse the same protobuf contract and expose aligned client/server capabilities for remote inspection, controlled file upload, and bounded command execution.
 
 Current user-facing actions:
 
@@ -23,6 +23,7 @@ Current user-facing actions:
 - `tail_file`
 - `grep_file`
 - `upload_file`
+- `exec`
 
 ## 2. Repository Layout
 
@@ -60,6 +61,7 @@ This is the most stable center of the project and should usually be the first fi
   - `TailFileRequest`
   - `GrepFileRequest`
   - upload-related request messages
+  - `ExecRequest`
 - common reply model
   - `ActionReply`
 - service interface
@@ -135,13 +137,14 @@ When reading that file, focus on:
   - token validation
   - timing
   - `ActionReply` population
-- how each RPC delegates to shared file helpers or upload-session state
+- how each RPC delegates to shared file helpers, upload-session state, or process-execution helpers
 
 ### 4.4 Shared C++ Logic
 
 Shared file and system logic lives in:
 
 - [src/common/file_ops.cpp](../src/common/file_ops.cpp)
+- [src/common/exec_utils.cpp](../src/common/exec_utils.cpp)
 - [src/common/format.cpp](../src/common/format.cpp)
 - [src/common/system_utils.cpp](../src/common/system_utils.cpp)
 
@@ -155,6 +158,9 @@ Shared file and system logic lives in:
 - `grep_file_text`
 
 Upload session allocation, chunk writing, and commit/abort behavior currently live in the service implementation layer rather than `common/file_ops.cpp`.
+
+[src/common/exec_utils.cpp](../src/common/exec_utils.cpp) is the shared process-execution boundary for the C++ implementation. Inspect it first when `exec` behaves differently on Windows versus Linux/macOS.
+The current default timeout is 30 seconds, and timeout handling returns `timed_out=true` with exit code `124`.
 
 ### 4.5 C++ Client Flow
 
@@ -222,6 +228,7 @@ This file currently holds:
 - root-constrained path resolution
 - file RPC implementations
 - upload session management and upload RPC implementations
+- command execution and timeout handling for `exec`
 - Rust client helper functions for each RPC
 
 If you want a quick understanding of the Rust implementation boundary, this is the single most useful file to read.
@@ -277,8 +284,8 @@ Responsibilities:
 
 ### 7.2 Rust Build Scripts
 
-- [rust/rust_build.ps1](../rust/rust_build.ps1)
-- [rust/rust_build.sh](../rust/rust_build.sh)
+- [rust/build.ps1](../rust/build.ps1)
+- [rust/build.sh](../rust/build.sh)
 
 Responsibilities:
 
@@ -290,8 +297,8 @@ Responsibilities:
   - [smoke_test.ps1](../smoke_test.ps1)
   - [smoke_test.sh](../smoke_test.sh)
 - Rust
-  - [rust/smoke_test_rust.ps1](../rust/smoke_test_rust.ps1)
-  - [rust/smoke_test_rust.sh](../rust/smoke_test_rust.sh)
+- [rust/smoke_test.ps1](../rust/smoke_test.ps1)
+- [rust/smoke_test.sh](../rust/smoke_test.sh)
 
 These scripts:
 
@@ -345,8 +352,9 @@ Recommended order:
 
 ## 9. Important Context Facts
 
-- This project is a controlled remote inspection and file-transfer tool, not a general-purpose remote shell.
+- This project started as a controlled remote inspection and file-transfer tool, and now also includes an explicit `exec` RPC for trusted environments.
 - Path access is constrained by `--root`.
+- `exec` can run shell commands. Its `working_dir` is constrained by `--root`, but the command itself is not sandboxed beyond the server process permissions.
 - An empty token means no auth; production usage should normally provide a token.
 - The C++ build depends on a locally installed gRPC prefix and does not use Conan.
 - The Rust build uses Cargo-native dependencies but still shares the same protocol contract.

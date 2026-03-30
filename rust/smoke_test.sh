@@ -9,7 +9,7 @@ TOKEN="${TOKEN:-smoke-token-rust}"
 
 usage() {
   cat <<'EOF'
-Usage: ./rust/smoke_test_rust.sh [options]
+Usage: ./rust/smoke_test.sh [options]
 
 Options:
   --build-type <Debug|Release>
@@ -64,7 +64,7 @@ resolve_binary_path() {
     return 0
   fi
 
-  echo "Unable to find binary $name for build type $BUILD_TYPE. Run ./rust/rust_build.sh first." >&2
+  echo "Unable to find binary $name for build type $BUILD_TYPE. Run ./rust/build.sh first." >&2
   exit 1
 }
 
@@ -135,6 +135,11 @@ assert_contains "$tail_file" "omega line" "tail_file"
 
 grep_file="$("$CLIENT_PATH" "${COMMON_ARGS[@]}" grep_file --path sample.log --needle ERROR)"
 assert_contains "$grep_file" "ERROR target line" "grep_file"
+
+exec_reply="$("$CLIENT_PATH" "${COMMON_ARGS[@]}" exec --command "cat sample.log" --working-dir .)"
+assert_contains "$exec_reply" "ok: true" "exec"
+assert_contains "$exec_reply" "summary: command completed successfully" "exec"
+assert_contains "$exec_reply" "ERROR target line" "exec"
 
 upload_file="$("$CLIENT_PATH" "${COMMON_ARGS[@]}" upload_file --local "$UPLOAD_SOURCE_FILE" --path uploads/received.txt)"
 assert_contains "$upload_file" "ok: true" "upload_file"

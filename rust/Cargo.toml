@@ -9,7 +9,7 @@ anyhow = "1.0"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 hostname = "0.4"
 prost = "0.14"
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1", features = ["io-util", "macros", "process", "rt-multi-thread", "time"] }
 tonic = { version = "0.14", features = ["transport"] }
 tonic-prost = "0.14"
 

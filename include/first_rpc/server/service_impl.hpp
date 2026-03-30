@@ -35,6 +35,8 @@ public:
                               rpc::ActionReply* reply) override;
     grpc::Status UploadAbort(grpc::ServerContext* context, const rpc::UploadControlRequest* request,
                              rpc::ActionReply* reply) override;
+    grpc::Status Exec(grpc::ServerContext* context, const rpc::ExecRequest* request,
+                      rpc::ActionReply* reply) override;
 
 private:
     struct UploadSession {

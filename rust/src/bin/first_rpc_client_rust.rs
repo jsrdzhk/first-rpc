@@ -7,8 +7,9 @@ use first_rpc_rust::cli::{arg_value, format_reply, has_arg};
 use first_rpc_rust::generated::rpc::remote_ops_client::RemoteOpsClient;
 use first_rpc_rust::generated::rpc::ActionReply;
 use first_rpc_rust::ops::{
-    grep_file_client, health_check_client, list_dir_client, read_file_client, tail_file_client,
-    upload_abort_client, upload_chunk_client, upload_commit_client, upload_init_client,
+    exec_client, grep_file_client, health_check_client, list_dir_client, read_file_client,
+    tail_file_client, upload_abort_client, upload_chunk_client, upload_commit_client,
+    upload_init_client,
 };
 use tonic::transport::Channel;
 
@@ -16,7 +17,7 @@ const DEFAULT_CHUNK_SIZE: usize = 1024 * 1024;
 
 fn print_usage() {
     println!(
-        "Usage:\n  first_rpc_client_rust --host 127.0.0.1 --port 18777 --token token health_check\n  first_rpc_client_rust --host 127.0.0.1 --port 18777 --token token list_dir --path .\n  first_rpc_client_rust --host 127.0.0.1 --port 18777 --token token read_file --path app.log\n  first_rpc_client_rust --host 127.0.0.1 --port 18777 --token token tail_file --path app.log --lines 50\n  first_rpc_client_rust --host 127.0.0.1 --port 18777 --token token grep_file --path app.log --needle ERROR\n  first_rpc_client_rust --host 127.0.0.1 --port 18777 --token token upload_file --local app.jar --path deploy/app.jar"
+        "Usage:\n  first_rpc_client_rust --host 127.0.0.1 --port 18777 --token token health_check\n  first_rpc_client_rust --host 127.0.0.1 --port 18777 --token token list_dir --path .\n  first_rpc_client_rust --host 127.0.0.1 --port 18777 --token token read_file --path app.log\n  first_rpc_client_rust --host 127.0.0.1 --port 18777 --token token tail_file --path app.log --lines 50\n  first_rpc_client_rust --host 127.0.0.1 --port 18777 --token token grep_file --path app.log --needle ERROR\n  first_rpc_client_rust --host 127.0.0.1 --port 18777 --token token upload_file --local app.jar --path deploy/app.jar\n  first_rpc_client_rust --host 127.0.0.1 --port 18777 --token token exec --command \"pwd\" --working-dir ."
     );
 }
 
@@ -31,6 +32,7 @@ fn action_from_args(args: &[String]) -> Result<String> {
                     | "tail_file"
                     | "grep_file"
                     | "upload_file"
+                    | "exec"
             )
         })
         .cloned()
@@ -164,6 +166,22 @@ async fn main() -> Result<()> {
             let chunk_size = arg_value(&args, "--chunk-size", &DEFAULT_CHUNK_SIZE.to_string())
                 .parse::<usize>()?;
             upload_file(&mut client, token, local, remote, overwrite, chunk_size).await?
+        }
+        "exec" => {
+            let command = arg_value(&args, "--command", "");
+            let working_dir = arg_value(&args, "--working-dir", ".");
+            let timeout_ms = arg_value(&args, "--timeout-ms", "30000").parse::<u64>()?;
+            let max_output_bytes =
+                arg_value(&args, "--max-output-bytes", "65536").parse::<u64>()?;
+            exec_client(
+                &mut client,
+                token,
+                command,
+                working_dir,
+                timeout_ms,
+                max_output_bytes,
+            )
+            .await?
         }
         _ => return Err(anyhow!("Unsupported action: {}", action)),
     };

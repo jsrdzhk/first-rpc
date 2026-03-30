@@ -101,4 +101,16 @@ rpc::ActionReply RpcClient::UploadAbort(const std::string& token, const std::str
     return Invoke(request, &rpc::RemoteOps::Stub::UploadAbort);
 }
 
+rpc::ActionReply RpcClient::Exec(const std::string& token, const std::string& command,
+                                 const std::string& working_dir, std::uint64_t timeout_ms,
+                                 std::uint64_t max_output_bytes) const {
+    rpc::ExecRequest request;
+    request.set_token(token);
+    request.set_command(command);
+    request.set_working_dir(working_dir);
+    request.set_timeout_ms(timeout_ms);
+    request.set_max_output_bytes(max_output_bytes);
+    return Invoke(request, &rpc::RemoteOps::Stub::Exec);
+}
+
 }  // namespace first_rpc
