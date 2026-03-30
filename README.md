@@ -166,6 +166,20 @@ Start a server:
 first_rpc_server --host 127.0.0.1 --port 18777 --root /var/log --token demo-token
 ```
 
+On Linux servers, you can also use the helper script to manage a background process:
+
+```bash
+./run_server.sh start --host 0.0.0.0 --port 18777 --root /var/log --token demo-token
+./run_server.sh status
+./run_server.sh stop
+```
+
+The helper defaults to the C++ server. To launch the Rust server instead:
+
+```bash
+./run_server.sh start --impl rust --root /var/log --token demo-token
+```
+
 Health check:
 
 ```bash
