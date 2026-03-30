@@ -184,6 +184,12 @@ The helper defaults to the C++ server. To launch the Rust server instead:
 ./run_server.sh start --impl rust --root /var/log --token demo-token
 ```
 
+If the server binary is already in the current working directory or another custom location, you can point the helper at it directly:
+
+```bash
+./run_server.sh start --bin ./first_rpc_server --root /var/log --token demo-token
+```
+
 Health check:
 
 ```bash

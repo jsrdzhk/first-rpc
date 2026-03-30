@@ -18,6 +18,7 @@ HOST="${HOST:-127.0.0.1}"
 PORT="${PORT:-18777}"
 ROOT_DIR="${ROOT_DIR:-.}"
 TOKEN="${TOKEN:-}"
+BIN_PATH="${BIN_PATH:-}"
 LOG_DIR="${LOG_DIR:-}"
 PID_FILE="${PID_FILE:-}"
 FOREGROUND="${FOREGROUND:-0}"
@@ -33,6 +34,7 @@ Options:
   --port <port>
   --root <path>
   --token <token>
+  --bin <path>
   --log-dir <path>
   --pid-file <path>
   --foreground
@@ -45,6 +47,7 @@ Environment overrides:
   PORT
   ROOT_DIR
   TOKEN
+  BIN_PATH
   LOG_DIR
   PID_FILE
   FOREGROUND
@@ -52,6 +55,7 @@ Environment overrides:
 Examples:
   ./run_server.sh start --host 0.0.0.0 --port 18777 --root /data/logs --token demo-token
   ./run_server.sh restart --impl rust --root /var/log/app --log-dir /tmp/first-rpc
+  ./run_server.sh start --bin ./first_rpc_server --root /var/log/app
   ./run_server.sh status
 EOF
 }
@@ -85,6 +89,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --token)
       TOKEN="$2"
+      shift 2
+      ;;
+    --bin)
+      BIN_PATH="$2"
       shift 2
       ;;
     --log-dir)
@@ -136,6 +144,15 @@ STDOUT_LOG="$LOG_DIR/server.stdout.log"
 STDERR_LOG="$LOG_DIR/server.stderr.log"
 
 resolve_binary_path() {
+  if [[ -n "$BIN_PATH" ]]; then
+    if [[ -x "$BIN_PATH" ]]; then
+      echo "$BIN_PATH"
+      return 0
+    fi
+    echo "Configured binary is not executable or does not exist: $BIN_PATH" >&2
+    exit 1
+  fi
+
   local profile_dir
   case "$BUILD_TYPE" in
     Debug)
@@ -152,6 +169,15 @@ resolve_binary_path() {
 
   local candidate
   if [[ "$IMPLEMENTATION" == "cpp" ]]; then
+    for candidate in \
+      "./first_rpc_server" \
+      "$(pwd)/first_rpc_server"; do
+      if [[ -x "$candidate" ]]; then
+        echo "$candidate"
+        return 0
+      fi
+    done
+
     local build_dir
     if [[ "$profile_dir" == "debug" ]]; then
       build_dir="cmake-build-debug"
@@ -172,6 +198,15 @@ resolve_binary_path() {
   fi
 
   if [[ "$IMPLEMENTATION" == "rust" ]]; then
+    for candidate in \
+      "./first_rpc_server_rust" \
+      "$(pwd)/first_rpc_server_rust"; do
+      if [[ -x "$candidate" ]]; then
+        echo "$candidate"
+        return 0
+      fi
+    done
+
     candidate="$SCRIPT_DIR/rust/target/$profile_dir/first_rpc_server_rust"
     if [[ -x "$candidate" ]]; then
       echo "$candidate"
