@@ -51,7 +51,11 @@ function Get-GitOutput {
 
     $output = & git @Arguments 2>$null
     if ($LASTEXITCODE -ne 0) {
-        return $null
+        return ""
+    }
+
+    if ($null -eq $output) {
+        return ""
     }
 
     if ($output -is [array]) {
@@ -166,6 +170,9 @@ try {
 
         Invoke-Step -Name "Switch gRPC source to resolved ref" -Action {
             $ResolvedGrpcRef = Resolve-GrpcRef -RepoPath $GrpcSourceDir -RequestedRef $GrpcVersion
+            if ([string]::IsNullOrWhiteSpace($ResolvedGrpcRef)) {
+                throw "Resolved gRPC ref is empty for $GrpcSourceDir"
+            }
             $RemoteBranchSha = Get-GitOutput -Arguments @("-C", $GrpcSourceDir, "ls-remote", "--heads", "origin", $ResolvedGrpcRef)
             if (-not [string]::IsNullOrWhiteSpace($RemoteBranchSha)) {
                 git -C $GrpcSourceDir checkout -B $ResolvedGrpcRef "origin/$ResolvedGrpcRef"

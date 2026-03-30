@@ -238,6 +238,10 @@ if [[ "$SKIP_CLONE" != "1" ]]; then
 
   step "Switch gRPC source to resolved ref"
   RESOLVED_GRPC_REF="$(resolve_grpc_ref "$GRPC_SOURCE_DIR" "$GRPC_VERSION")"
+  if [[ -z "$RESOLVED_GRPC_REF" ]]; then
+    echo "Resolved gRPC ref is empty for $GRPC_SOURCE_DIR" >&2
+    exit 1
+  fi
   if [[ -n "$(git -C "$GRPC_SOURCE_DIR" ls-remote --heads origin "$RESOLVED_GRPC_REF")" ]]; then
     git -C "$GRPC_SOURCE_DIR" checkout -B "$RESOLVED_GRPC_REF" "origin/$RESOLVED_GRPC_REF"
     git -C "$GRPC_SOURCE_DIR" pull --ff-only origin "$RESOLVED_GRPC_REF"
