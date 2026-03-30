@@ -9,7 +9,9 @@ param(
 
     [string]$HttpProxy = "http://127.0.0.1:7897",
 
-    [string]$GrpcVersion = "v1.78.1",
+    [string]$GrpcVersion = "",
+
+    [int]$Parallel = [Environment]::ProcessorCount,
 
     [switch]$SkipClone,
     [switch]$SkipBuild
@@ -39,6 +41,79 @@ function Assert-CommandExists {
     if (-not (Get-Command $CommandName -ErrorAction SilentlyContinue)) {
         throw "Required command not found: $CommandName"
     }
+}
+
+function Get-GitOutput {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string[]]$Arguments
+    )
+
+    $output = & git @Arguments 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        return $null
+    }
+
+    if ($output -is [array]) {
+        return ($output -join "`n").Trim()
+    }
+
+    return ([string]$output).Trim()
+}
+
+function Resolve-GrpcRef {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$RepoPath,
+        [string]$RequestedRef
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace($RequestedRef)) {
+        return $RequestedRef
+    }
+
+    $tags = Get-GitOutput -Arguments @("-C", $RepoPath, "tag", "--list", "v*", "--sort=-version:refname")
+    if ([string]::IsNullOrWhiteSpace($tags)) {
+        throw "Unable to resolve the latest stable gRPC tag in $RepoPath"
+    }
+
+    $stableTag = $tags -split "`r?`n" |
+        Where-Object { $_ -match "^v\d+\.\d+\.\d+$" } |
+        Select-Object -First 1
+
+    if ([string]::IsNullOrWhiteSpace($stableTag)) {
+        throw "No stable non-pre gRPC tag was found in $RepoPath"
+    }
+
+    return $stableTag
+}
+
+function Resolve-GitDefaultBranch {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$RepoPath
+    )
+
+    $RemoteHeadRef = Get-GitOutput -Arguments @("-C", $RepoPath, "symbolic-ref", "refs/remotes/origin/HEAD")
+    if (-not [string]::IsNullOrWhiteSpace($RemoteHeadRef)) {
+        return ($RemoteHeadRef -replace "^refs/remotes/origin/", "")
+    }
+
+    & git -C $RepoPath remote set-head origin --auto *> $null
+
+    $RemoteHeadRef = Get-GitOutput -Arguments @("-C", $RepoPath, "symbolic-ref", "refs/remotes/origin/HEAD")
+    if (-not [string]::IsNullOrWhiteSpace($RemoteHeadRef)) {
+        return ($RemoteHeadRef -replace "^refs/remotes/origin/", "")
+    }
+
+    foreach ($candidate in @("master", "main")) {
+        $branchExists = Get-GitOutput -Arguments @("-C", $RepoPath, "ls-remote", "--heads", "origin", $candidate)
+        if (-not [string]::IsNullOrWhiteSpace($branchExists)) {
+            return $candidate
+        }
+    }
+
+    throw "Unable to determine origin default branch for $RepoPath"
 }
 
 $RepoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -78,12 +153,32 @@ try {
     if (-not $SkipClone) {
         if (-not (Test-Path -LiteralPath $GrpcSourceDir)) {
             Invoke-Step -Name "Clone gRPC source" -Action {
-                git clone --recurse-submodules -b $GrpcVersion --depth 1 --shallow-submodules https://github.com/grpc/grpc $GrpcSourceDir
+                git clone --recurse-submodules https://github.com/grpc/grpc $GrpcSourceDir
             }
-        } else {
-            Invoke-Step -Name "Update gRPC submodules" -Action {
-                git -C $GrpcSourceDir submodule update --init --recursive
+        }
+
+        Invoke-Step -Name "Pull latest gRPC default branch" -Action {
+            git -C $GrpcSourceDir fetch --prune --tags --all
+            $DefaultBranch = Resolve-GitDefaultBranch -RepoPath $GrpcSourceDir
+            git -C $GrpcSourceDir checkout -B $DefaultBranch "origin/$DefaultBranch"
+            git -C $GrpcSourceDir pull --ff-only origin $DefaultBranch
+        }
+
+        Invoke-Step -Name "Switch gRPC source to resolved ref" -Action {
+            $ResolvedGrpcRef = Resolve-GrpcRef -RepoPath $GrpcSourceDir -RequestedRef $GrpcVersion
+            $RemoteBranchSha = Get-GitOutput -Arguments @("-C", $GrpcSourceDir, "ls-remote", "--heads", "origin", $ResolvedGrpcRef)
+            if (-not [string]::IsNullOrWhiteSpace($RemoteBranchSha)) {
+                git -C $GrpcSourceDir checkout -B $ResolvedGrpcRef "origin/$ResolvedGrpcRef"
+                git -C $GrpcSourceDir pull --ff-only origin $ResolvedGrpcRef
+            } else {
+                git -C $GrpcSourceDir checkout $ResolvedGrpcRef
             }
+
+            Write-Host "Resolved gRPC ref: $ResolvedGrpcRef" -ForegroundColor DarkGray
+        }
+
+        Invoke-Step -Name "Update gRPC submodules" -Action {
+            git -C $GrpcSourceDir submodule update --init --recursive
         }
     }
 
@@ -100,7 +195,7 @@ try {
 
     if (-not $SkipBuild) {
         Invoke-Step -Name "Build and install gRPC" -Action {
-            cmake --build $GrpcBuildDir --config $BuildType --target install -j 4
+            cmake --build $GrpcBuildDir --config $BuildType --target install --parallel $Parallel
         }
 
         $HasGrpcConfig = ($GrpcConfigCandidates | Where-Object { Test-Path -LiteralPath $_ } | Measure-Object).Count -gt 0

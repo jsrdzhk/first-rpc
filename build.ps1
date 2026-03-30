@@ -9,6 +9,8 @@ param(
 
     [string]$HttpProxy = "http://127.0.0.1:7897",
 
+    [int]$Parallel = [Environment]::ProcessorCount,
+
     [switch]$SkipConfigure,
     [switch]$SkipBuild
 )
@@ -101,7 +103,7 @@ try {
 
     if (-not $SkipBuild) {
         Invoke-Step -Name "Build solution" -Action {
-            cmake --build $BuildDirName --config $BuildType
+            cmake --build $BuildDirName --config $BuildType --parallel $Parallel
         }
     }
 

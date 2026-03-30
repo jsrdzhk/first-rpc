@@ -12,7 +12,7 @@ BUILD_TYPE="${BUILD_TYPE:-Release}"
 HTTP_PROXY_VALUE="${HTTP_PROXY_VALUE-}"
 GCC_C="${GCC_C:-gcc}"
 GCC_CXX="${GCC_CXX:-g++}"
-GRPC_VERSION="${GRPC_VERSION:-v1.78.1}"
+GRPC_VERSION="${GRPC_VERSION:-}"
 SKIP_CLONE="${SKIP_CLONE:-0}"
 SKIP_BUILD="${SKIP_BUILD:-0}"
 
@@ -111,10 +111,100 @@ step() {
   echo "==> $1"
 }
 
+extract_major_version() {
+  local compiler_bin="$1"
+  local version_output
+  version_output="$("$compiler_bin" -dumpfullversion -dumpversion 2>/dev/null || true)"
+  version_output="${version_output%% *}"
+  version_output="${version_output%%.*}"
+  echo "$version_output"
+}
+
+validate_compiler_versions() {
+  local gcc_major
+  local gxx_major
+
+  echo "Detected gcc: $("$GCC_C" --version | head -n 1)"
+  echo "Detected g++: $("$GCC_CXX" --version | head -n 1)"
+
+  gcc_major="$(extract_major_version "$GCC_C")"
+  gxx_major="$(extract_major_version "$GCC_CXX")"
+
+  if [[ -z "$gcc_major" || -z "$gxx_major" ]]; then
+    echo "Unable to determine compiler major version. Please verify gcc/g++ are available in the current shell." >&2
+    exit 1
+  fi
+
+  if [[ ! "$gcc_major" =~ ^[0-9]+$ || ! "$gxx_major" =~ ^[0-9]+$ ]]; then
+    echo "Compiler version check failed: gcc=$gcc_major, g++=$gxx_major" >&2
+    exit 1
+  fi
+
+  if [[ "$gcc_major" != "$gxx_major" ]]; then
+    echo "gcc and g++ major versions do not match: gcc=$gcc_major, g++=$gxx_major" >&2
+    echo "Please enter the intended toolchain first, for example: scl enable devtoolset-11 bash" >&2
+    exit 1
+  fi
+
+  if (( gcc_major < 11 )); then
+    echo "gcc/g++ major version must be at least 11. Current version: $gcc_major" >&2
+    echo "Please enter the intended toolchain first, for example: scl enable devtoolset-11 bash" >&2
+    exit 1
+  fi
+}
+
+resolve_grpc_ref() {
+  local repo_path="$1"
+  local requested_ref="$2"
+
+  if [[ -n "$requested_ref" ]]; then
+    echo "$requested_ref"
+    return 0
+  fi
+
+  local stable_tag
+  stable_tag="$(git -C "$repo_path" tag --list 'v*' --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1)"
+  if [[ -z "$stable_tag" ]]; then
+    echo "No stable non-pre gRPC tag was found in $repo_path" >&2
+    exit 1
+  fi
+
+  echo "$stable_tag"
+}
+
+resolve_git_default_branch() {
+  local repo_path="$1"
+  local remote_head_ref
+
+  remote_head_ref="$(git -C "$repo_path" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null || true)"
+  if [[ -n "$remote_head_ref" ]]; then
+    echo "${remote_head_ref#refs/remotes/origin/}"
+    return 0
+  fi
+
+  git -C "$repo_path" remote set-head origin --auto >/dev/null 2>&1 || true
+  remote_head_ref="$(git -C "$repo_path" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null || true)"
+  if [[ -n "$remote_head_ref" ]]; then
+    echo "${remote_head_ref#refs/remotes/origin/}"
+    return 0
+  fi
+
+  for candidate in master main; do
+    if [[ -n "$(git -C "$repo_path" ls-remote --heads origin "$candidate")" ]]; then
+      echo "$candidate"
+      return 0
+    fi
+  done
+
+  echo "Unable to determine origin default branch for $repo_path" >&2
+  exit 1
+}
+
 require_cmd git
 require_cmd cmake
 require_cmd "$GCC_C"
 require_cmd "$GCC_CXX"
+validate_compiler_versions
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 THIRD_PARTY_ROOT="$REPO_ROOT/third_party"
@@ -137,11 +227,27 @@ mkdir -p "$THIRD_PARTY_ROOT" "$GRPC_BUILD_DIR" "$GRPC_INSTALL_DIR"
 if [[ "$SKIP_CLONE" != "1" ]]; then
   if [[ ! -d "$GRPC_SOURCE_DIR/.git" ]]; then
     step "Clone gRPC source"
-    git clone --recurse-submodules -b "$GRPC_VERSION" --depth 1 --shallow-submodules https://github.com/grpc/grpc "$GRPC_SOURCE_DIR"
-  else
-    step "Update gRPC submodules"
-    git -C "$GRPC_SOURCE_DIR" submodule update --init --recursive
+    git clone --recurse-submodules https://github.com/grpc/grpc "$GRPC_SOURCE_DIR"
   fi
+
+  step "Pull latest gRPC default branch"
+  git -C "$GRPC_SOURCE_DIR" fetch --prune --tags --all
+  DEFAULT_BRANCH="$(resolve_git_default_branch "$GRPC_SOURCE_DIR")"
+  git -C "$GRPC_SOURCE_DIR" checkout -B "$DEFAULT_BRANCH" "origin/$DEFAULT_BRANCH"
+  git -C "$GRPC_SOURCE_DIR" pull --ff-only origin "$DEFAULT_BRANCH"
+
+  step "Switch gRPC source to resolved ref"
+  RESOLVED_GRPC_REF="$(resolve_grpc_ref "$GRPC_SOURCE_DIR" "$GRPC_VERSION")"
+  if [[ -n "$(git -C "$GRPC_SOURCE_DIR" ls-remote --heads origin "$RESOLVED_GRPC_REF")" ]]; then
+    git -C "$GRPC_SOURCE_DIR" checkout -B "$RESOLVED_GRPC_REF" "origin/$RESOLVED_GRPC_REF"
+    git -C "$GRPC_SOURCE_DIR" pull --ff-only origin "$RESOLVED_GRPC_REF"
+  else
+    git -C "$GRPC_SOURCE_DIR" checkout "$RESOLVED_GRPC_REF"
+  fi
+  echo "Resolved gRPC ref: $RESOLVED_GRPC_REF"
+
+  step "Update gRPC submodules"
+  git -C "$GRPC_SOURCE_DIR" submodule update --init --recursive
 fi
 
 step "Configure gRPC"

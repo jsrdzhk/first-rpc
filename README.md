@@ -32,11 +32,22 @@ This project follows the official gRPC C++ source-build flow:
 - install it into a local prefix inside this repo
 - point `first-rpc` at that prefix with `CMAKE_PREFIX_PATH`
 
+Current pinned gRPC tag: `v1.80.0`
+
+When `GrpcVersion` is not provided, the deps scripts now auto-select the latest stable gRPC tag that does not end with `-pre...`.
+
 ### Windows
 
 ```powershell
 .\deps.ps1
 .\build.ps1
+```
+
+Windows scripts default to `ProcessorCount` parallel jobs. You can override it with `-Parallel`, for example:
+
+```powershell
+.\deps.ps1 -Parallel 12
+.\build.ps1 -Parallel 12
 ```
 
 `deps.ps1` will:
@@ -106,6 +117,8 @@ scl enable devtoolset-11 bash
 
 这对 CentOS 7 很重要，因为即使系统默认还是 `g++ 4.8.5`，你只要先进入 `devtoolset-11`，脚本就会沿用那个 shell 里的 `gcc/g++` 去编译 gRPC 和 protobuf。
 
+`deps.sh` now prints the detected `gcc/g++` versions and fails fast unless both compilers are present, share the same major version, and are at least GCC 11.
+
 依赖装好之后，日常改代码通常只需要：
 
 ```bash
@@ -130,6 +143,22 @@ Tail a file:
 
 ```bash
 first_rpc_client --host 127.0.0.1 --port 18777 --token demo-token tail_file --path app.log --lines 50
+```
+
+## Smoke Test
+
+After building, you can run a local end-to-end smoke test that starts the server on localhost, prepares a sample file, and verifies `health_check`, `list_dir`, `read_file`, `tail_file`, and `grep_file`.
+
+Windows:
+
+```powershell
+.\smoke_test.ps1 -BuildType Release
+```
+
+Linux / macOS:
+
+```bash
+./smoke_test.sh --build-type Release
 ```
 
 ## CentOS 7 + GCC 15 Notes
