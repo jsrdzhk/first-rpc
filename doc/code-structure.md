@@ -42,7 +42,7 @@
 
 ## 3. 协议层
 
-协议定义在 [first_rpc.proto](C:/my_proj/first-rpc/proto/first_rpc.proto)。
+协议定义在 [first_rpc.proto](../proto/first_rpc.proto)。
 
 这是整个项目最稳定的中心点，建议优先阅读。它定义了：
 
@@ -72,7 +72,7 @@
 
 ### 4.1 构建入口
 
-C++ 主工程入口在 [CMakeLists.txt](C:/my_proj/first-rpc/CMakeLists.txt)。
+C++ 主工程入口在 [CMakeLists.txt](../CMakeLists.txt)。
 
 这里主要做几件事：
 
@@ -96,20 +96,20 @@ C++ 主工程入口在 [CMakeLists.txt](C:/my_proj/first-rpc/CMakeLists.txt)。
 
 关键头文件：
 
-- [service_impl.hpp](C:/my_proj/first-rpc/include/first_rpc/server/service_impl.hpp)
+- [service_impl.hpp](../include/first_rpc/server/service_impl.hpp)
   - C++ 服务端 `RemoteOps` 实现声明
-- [rpc_client.hpp](C:/my_proj/first-rpc/include/first_rpc/client/rpc_client.hpp)
+- [rpc_client.hpp](../include/first_rpc/client/rpc_client.hpp)
   - C++ 客户端调用封装
-- [file_ops.hpp](C:/my_proj/first-rpc/include/first_rpc/common/file_ops.hpp)
+- [file_ops.hpp](../include/first_rpc/common/file_ops.hpp)
   - 文件类操作函数声明
-- [format.hpp](C:/my_proj/first-rpc/include/first_rpc/common/format.hpp)
+- [format.hpp](../include/first_rpc/common/format.hpp)
   - `ActionReply` 文本格式化
 
 ### 4.3 服务端链路
 
 服务端入口：
 
-- [main.cpp](C:/my_proj/first-rpc/src/server/main.cpp)
+- [main.cpp](../src/server/main.cpp)
 
 这里负责：
 
@@ -119,7 +119,7 @@ C++ 主工程入口在 [CMakeLists.txt](C:/my_proj/first-rpc/CMakeLists.txt)。
 
 真正的 RPC 处理在：
 
-- [service_impl.cpp](C:/my_proj/first-rpc/src/server/service_impl.cpp)
+- [service_impl.cpp](../src/server/service_impl.cpp)
 
 阅读这个文件时重点看：
 
@@ -133,11 +133,11 @@ C++ 主工程入口在 [CMakeLists.txt](C:/my_proj/first-rpc/CMakeLists.txt)。
 
 公共文件/系统逻辑主要在：
 
-- [file_ops.cpp](C:/my_proj/first-rpc/src/common/file_ops.cpp)
-- [format.cpp](C:/my_proj/first-rpc/src/common/format.cpp)
-- [system_utils.cpp](C:/my_proj/first-rpc/src/common/system_utils.cpp)
+- [file_ops.cpp](../src/common/file_ops.cpp)
+- [format.cpp](../src/common/format.cpp)
+- [system_utils.cpp](../src/common/system_utils.cpp)
 
-其中最值得先看的文件是 [file_ops.cpp](C:/my_proj/first-rpc/src/common/file_ops.cpp)，因为它直接决定了远程排查能力边界：
+其中最值得先看的文件是 [file_ops.cpp](../src/common/file_ops.cpp)，因为它直接决定了远程排查能力边界：
 
 - `normalize_under_root`
   - 负责把请求路径限制在配置根目录下
@@ -152,7 +152,7 @@ C++ 主工程入口在 [CMakeLists.txt](C:/my_proj/first-rpc/CMakeLists.txt)。
 
 客户端入口：
 
-- [main.cpp](C:/my_proj/first-rpc/src/client/main.cpp)
+- [main.cpp](../src/client/main.cpp)
 
 这里负责：
 
@@ -163,23 +163,23 @@ C++ 主工程入口在 [CMakeLists.txt](C:/my_proj/first-rpc/CMakeLists.txt)。
 
 实际 RPC 调用封装在：
 
-- [rpc_client.cpp](C:/my_proj/first-rpc/src/client/rpc_client.cpp)
+- [rpc_client.cpp](../src/client/rpc_client.cpp)
 
 文本输出格式在：
 
-- [format.cpp](C:/my_proj/first-rpc/src/common/format.cpp)
+- [format.cpp](../src/common/format.cpp)
 
 所以如果用户反馈“CLI 打印格式不对”或“参数解析不支持某个动作”，先看客户端这两层。
 
 ## 5. Rust 代码结构
 
-Rust 版是一个独立工程，根目录在 [Cargo.toml](C:/my_proj/first-rpc/rust/Cargo.toml)。
+Rust 版是一个独立工程，根目录在 [Cargo.toml](../rust/Cargo.toml)。
 
 ### 5.1 生成与模块入口
 
-- [build.rs](C:/my_proj/first-rpc/rust/build.rs)
+- [build.rs](../rust/build.rs)
   - 根据同一份 proto 生成 Rust gRPC 代码
-- [lib.rs](C:/my_proj/first-rpc/rust/src/lib.rs)
+- [lib.rs](../rust/src/lib.rs)
   - 模块汇总入口
 
 `lib.rs` 当前暴露：
@@ -192,11 +192,11 @@ Rust 版是一个独立工程，根目录在 [Cargo.toml](C:/my_proj/first-rpc/r
 
 Rust server 入口：
 
-- [first_rpc_server_rust.rs](C:/my_proj/first-rpc/rust/src/bin/first_rpc_server_rust.rs)
+- [first_rpc_server_rust.rs](../rust/src/bin/first_rpc_server_rust.rs)
 
 Rust client 入口：
 
-- [first_rpc_client_rust.rs](C:/my_proj/first-rpc/rust/src/bin/first_rpc_client_rust.rs)
+- [first_rpc_client_rust.rs](../rust/src/bin/first_rpc_client_rust.rs)
 
 这两个文件和 C++ 的 `main.cpp` 定位类似，负责参数解析与进程入口，不是业务逻辑主战场。
 
@@ -204,7 +204,7 @@ Rust client 入口：
 
 Rust 版核心逻辑集中在：
 
-- [ops.rs](C:/my_proj/first-rpc/rust/src/ops.rs)
+- [ops.rs](../rust/src/ops.rs)
 
 这个文件同时承载：
 
@@ -218,7 +218,7 @@ Rust 版核心逻辑集中在：
 
 辅助 CLI 逻辑在：
 
-- [cli.rs](C:/my_proj/first-rpc/rust/src/cli.rs)
+- [cli.rs](../rust/src/cli.rs)
 
 这里主要负责：
 
@@ -230,22 +230,22 @@ Rust 版核心逻辑集中在：
 两套实现大致可以这样对照：
 
 - 协议
-  - C++ / Rust 都来自 [first_rpc.proto](C:/my_proj/first-rpc/proto/first_rpc.proto)
+  - C++ / Rust 都来自 [first_rpc.proto](../proto/first_rpc.proto)
 - 服务端入口
-  - C++: [src/server/main.cpp](C:/my_proj/first-rpc/src/server/main.cpp)
-  - Rust: [rust/src/bin/first_rpc_server_rust.rs](C:/my_proj/first-rpc/rust/src/bin/first_rpc_server_rust.rs)
+  - C++: [src/server/main.cpp](../src/server/main.cpp)
+  - Rust: [rust/src/bin/first_rpc_server_rust.rs](../rust/src/bin/first_rpc_server_rust.rs)
 - 服务端核心逻辑
-  - C++: [src/server/service_impl.cpp](C:/my_proj/first-rpc/src/server/service_impl.cpp)
-  - Rust: [rust/src/ops.rs](C:/my_proj/first-rpc/rust/src/ops.rs)
+  - C++: [src/server/service_impl.cpp](../src/server/service_impl.cpp)
+  - Rust: [rust/src/ops.rs](../rust/src/ops.rs)
 - 文件操作能力
-  - C++: [src/common/file_ops.cpp](C:/my_proj/first-rpc/src/common/file_ops.cpp)
-  - Rust: [rust/src/ops.rs](C:/my_proj/first-rpc/rust/src/ops.rs)
+  - C++: [src/common/file_ops.cpp](../src/common/file_ops.cpp)
+  - Rust: [rust/src/ops.rs](../rust/src/ops.rs)
 - 客户端入口
-  - C++: [src/client/main.cpp](C:/my_proj/first-rpc/src/client/main.cpp)
-  - Rust: [rust/src/bin/first_rpc_client_rust.rs](C:/my_proj/first-rpc/rust/src/bin/first_rpc_client_rust.rs)
+  - C++: [src/client/main.cpp](../src/client/main.cpp)
+  - Rust: [rust/src/bin/first_rpc_client_rust.rs](../rust/src/bin/first_rpc_client_rust.rs)
 - 回复格式化
-  - C++: [src/common/format.cpp](C:/my_proj/first-rpc/src/common/format.cpp)
-  - Rust: [rust/src/cli.rs](C:/my_proj/first-rpc/rust/src/cli.rs)
+  - C++: [src/common/format.cpp](../src/common/format.cpp)
+  - Rust: [rust/src/cli.rs](../rust/src/cli.rs)
 
 如果后续新增 RPC，最好两套实现一起保持字段和命令行行为一致。
 
@@ -253,10 +253,10 @@ Rust 版核心逻辑集中在：
 
 ### 7.1 C++ 构建脚本
 
-- [deps.ps1](C:/my_proj/first-rpc/deps.ps1)
-- [deps.sh](C:/my_proj/first-rpc/deps.sh)
-- [build.ps1](C:/my_proj/first-rpc/build.ps1)
-- [build.sh](C:/my_proj/first-rpc/build.sh)
+- [deps.ps1](../deps.ps1)
+- [deps.sh](../deps.sh)
+- [build.ps1](../build.ps1)
+- [build.sh](../build.sh)
 
 职责分工：
 
@@ -267,8 +267,8 @@ Rust 版核心逻辑集中在：
 
 ### 7.2 Rust 构建脚本
 
-- [rust_build.ps1](C:/my_proj/first-rpc/rust/rust_build.ps1)
-- [rust_build.sh](C:/my_proj/first-rpc/rust/rust_build.sh)
+- [rust_build.ps1](../rust/rust_build.ps1)
+- [rust_build.sh](../rust/rust_build.sh)
 
 职责：
 
@@ -277,11 +277,11 @@ Rust 版核心逻辑集中在：
 ### 7.3 本地验证脚本
 
 - C++
-  - [smoke_test.ps1](C:/my_proj/first-rpc/smoke_test.ps1)
-  - [smoke_test.sh](C:/my_proj/first-rpc/smoke_test.sh)
+  - [smoke_test.ps1](../smoke_test.ps1)
+  - [smoke_test.sh](../smoke_test.sh)
 - Rust
-  - [smoke_test_rust.ps1](C:/my_proj/first-rpc/rust/smoke_test_rust.ps1)
-  - [smoke_test_rust.sh](C:/my_proj/first-rpc/rust/smoke_test_rust.sh)
+  - [smoke_test_rust.ps1](../rust/smoke_test_rust.ps1)
+  - [smoke_test_rust.sh](../rust/smoke_test_rust.sh)
 
 这些脚本都会：
 
@@ -291,7 +291,7 @@ Rust 版核心逻辑集中在：
 
 ### 7.4 Linux 服务器运行脚本
 
-- [run_server.sh](C:/my_proj/first-rpc/run_server.sh)
+- [run_server.sh](../run_server.sh)
 
 职责：
 
@@ -307,17 +307,17 @@ Rust 版核心逻辑集中在：
 
 建议顺序：
 
-1. [first_rpc.proto](C:/my_proj/first-rpc/proto/first_rpc.proto)
-2. [CMakeLists.txt](C:/my_proj/first-rpc/CMakeLists.txt)
-3. [src/server/service_impl.cpp](C:/my_proj/first-rpc/src/server/service_impl.cpp)
-4. [src/common/file_ops.cpp](C:/my_proj/first-rpc/src/common/file_ops.cpp)
-5. [rust/src/ops.rs](C:/my_proj/first-rpc/rust/src/ops.rs)
+1. [first_rpc.proto](../proto/first_rpc.proto)
+2. [CMakeLists.txt](../CMakeLists.txt)
+3. [src/server/service_impl.cpp](../src/server/service_impl.cpp)
+4. [src/common/file_ops.cpp](../src/common/file_ops.cpp)
+5. [rust/src/ops.rs](../rust/src/ops.rs)
 
 ### 场景 2：想扩一个新的 RPC 动作
 
 建议顺序：
 
-1. 修改 [first_rpc.proto](C:/my_proj/first-rpc/proto/first_rpc.proto)
+1. 修改 [first_rpc.proto](../proto/first_rpc.proto)
 2. 修改 C++ server/client 分发
 3. 修改 Rust server/client 分发
 4. 更新 smoke test

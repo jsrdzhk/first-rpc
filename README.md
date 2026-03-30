@@ -25,7 +25,7 @@ This initial implementation provides:
 
 Code structure guide for future onboarding:
 
-- [doc/code-structure.md](C:/my_proj/first-rpc/doc/code-structure.md)
+- [doc/code-structure.md](doc/code-structure.md)
 
 ## Build
 
@@ -93,7 +93,7 @@ Windows scripts default to `ProcessorCount` parallel jobs. You can override it w
 
 ### Rust
 
-The repo also includes a Rust implementation under [rust/Cargo.toml](C:/my_proj/first-rpc/rust/Cargo.toml) that reuses the same protobuf contract and exposes matching executables with `_rust` suffixes:
+The repo also includes a Rust implementation under [rust/Cargo.toml](rust/Cargo.toml) that reuses the same protobuf contract and exposes matching executables with `_rust` suffixes:
 
 - `first_rpc_server_rust`
 - `first_rpc_client_rust`
