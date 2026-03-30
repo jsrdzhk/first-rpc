@@ -130,10 +130,9 @@ case "$ACTION" in
 esac
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-mkdir -p "$SCRIPT_DIR/build"
 
 if [[ -z "$LOG_DIR" ]]; then
-  LOG_DIR="$SCRIPT_DIR/build/server-runtime/$IMPLEMENTATION"
+  LOG_DIR="$SCRIPT_DIR/server-runtime/$IMPLEMENTATION"
 fi
 
 if [[ -z "$PID_FILE" ]]; then

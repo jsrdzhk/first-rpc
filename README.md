@@ -91,6 +91,14 @@ Windows scripts default to `ProcessorCount` parallel jobs. You can override it w
 .\build.ps1 -SkipConfigure
 ```
 
+If you want to install the built executables into a user-level PATH directory for direct PowerShell invocation:
+
+```powershell
+.\install.ps1
+```
+
+By default this installs binaries into `%LOCALAPPDATA%\first-rpc\bin` and adds that directory to the current user PATH.
+
 ### Rust
 
 The repo also includes a Rust implementation under [rust/Cargo.toml](rust/Cargo.toml) that reuses the same protobuf contract and exposes matching executables with `_rust` suffixes:
@@ -189,6 +197,8 @@ If the server binary is already in the current working directory or another cust
 ```bash
 ./run_server.sh start --bin ./first_rpc_server --root /var/log --token demo-token
 ```
+
+By default, the helper writes runtime logs and pid files under `server-runtime/<impl>/` in the repo root.
 
 Health check:
 
