@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Component, Path, PathBuf};
+use std::process::Command as StdCommand;
 use std::process::Stdio;
 use std::sync::Mutex;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
@@ -150,6 +151,96 @@ impl RemoteOpsState {
             fs::set_permissions(target, permissions)?;
         }
         Ok(())
+    }
+
+    fn grep_file_builtin(
+        &self,
+        path: &Path,
+        needle: &str,
+        max_matches: u64,
+        max_line_length: u64,
+    ) -> Result<String> {
+        let file = fs::File::open(path)?;
+        let reader = BufReader::new(file);
+        let mut matches = String::new();
+        let mut count = 0_u64;
+        for (index, line) in reader.lines().enumerate() {
+            let mut line = line?;
+            if !line.contains(needle) {
+                continue;
+            }
+            if line.len() > max_line_length as usize {
+                line.truncate(max_line_length as usize);
+            }
+            matches.push_str(&format!("{}:{}\n", index + 1, line));
+            count += 1;
+            if count >= max_matches {
+                break;
+            }
+        }
+
+        Ok(matches)
+    }
+
+    fn grep_file_with_rg(
+        &self,
+        path: &Path,
+        needle: &str,
+        max_matches: u64,
+        max_line_length: u64,
+    ) -> Result<String> {
+        let output = match StdCommand::new("rg")
+            .arg("-n")
+            .arg("-F")
+            .arg("-m")
+            .arg(max_matches.to_string())
+            .arg("--color")
+            .arg("never")
+            .arg("--no-heading")
+            .arg("--")
+            .arg(needle)
+            .arg(path)
+            .output()
+        {
+            Ok(output) => output,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                return self.grep_file_builtin(path, needle, max_matches, max_line_length);
+            }
+            Err(err) => return Err(anyhow!("Failed to execute rg: {err}")),
+        };
+
+        match output.status.code() {
+            Some(0) | Some(1) => {}
+            Some(code) => {
+                let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+                return Err(anyhow!(
+                    "rg search failed with exit code {}{}",
+                    code,
+                    if stderr.is_empty() {
+                        String::new()
+                    } else {
+                        format!(": {stderr}")
+                    }
+                ));
+            }
+            None => return Err(anyhow!("rg search terminated unexpectedly")),
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let mut normalized = String::new();
+        for line in stdout.lines().take(max_matches as usize) {
+            let Some((line_no, content)) = line.split_once(':') else {
+                continue;
+            };
+
+            let trimmed: String = content.chars().take(max_line_length as usize).collect();
+            normalized.push_str(line_no);
+            normalized.push(':');
+            normalized.push_str(&trimmed);
+            normalized.push('\n');
+        }
+
+        Ok(normalized)
     }
 
     async fn execute_command(
@@ -392,24 +483,12 @@ impl RemoteOps for RemoteOpsState {
                 return Err(anyhow!("Needle must not be empty"));
             }
 
-            let file = fs::File::open(path)?;
-            let reader = BufReader::new(file);
-            let mut matches = String::new();
-            let mut count = 0_u64;
-            for (index, line) in reader.lines().enumerate() {
-                let mut line = line?;
-                if !line.contains(&request.needle) {
-                    continue;
-                }
-                if line.len() > request.max_line_length as usize {
-                    line.truncate(request.max_line_length as usize);
-                }
-                matches.push_str(&format!("{}:{}\n", index + 1, line));
-                count += 1;
-                if count >= request.max_matches {
-                    break;
-                }
-            }
+            let matches = self.grep_file_with_rg(
+                &path,
+                &request.needle,
+                request.max_matches,
+                request.max_line_length,
+            )?;
 
             let mut data = BTreeMap::new();
             data.insert("matches".to_string(), matches);

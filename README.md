@@ -322,6 +322,11 @@ Default `exec` behavior:
 
 `exec` only constrains the resolved working directory under `--root`. The executed command still runs with the server process account and can access anything that account can reach. Treat it as a controlled convenience for trusted environments, not a sandbox.
 
+`grep_file` behavior:
+
+- the server prefers `rg` (`ripgrep`) on Windows, Linux, and macOS
+- if `rg` is not available on the host, it falls back to the built-in line-by-line scanner
+
 ## Smoke Test
 
 After building, you can run a local end-to-end smoke test that starts the server on localhost, prepares sample files, and verifies `health_check`, `list_dir`, `read_file`, `tail_file`, `grep_file`, `upload_file`, and `exec`.
