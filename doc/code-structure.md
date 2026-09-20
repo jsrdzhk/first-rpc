@@ -213,6 +213,12 @@ Rust client entry:
 
 - [rust/src/bin/first_rpc_client_rust.rs](../rust/src/bin/first_rpc_client_rust.rs)
 
+Rust MCP entry:
+
+- [rust/src/bin/first_rpc_mcp.rs](../rust/src/bin/first_rpc_mcp.rs)
+  - exposes the remote inspection actions over MCP STDIO
+  - keeps a gRPC channel open and calls the Rust client helpers directly
+
 These files correspond to the C++ `main.cpp` files: they parse arguments and wire process entry points, but most business logic lives elsewhere.
 
 ### 5.3 Main Rust Logic

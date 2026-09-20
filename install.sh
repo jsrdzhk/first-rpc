@@ -115,7 +115,7 @@ resolve_rust_binaries() {
     profile_dir="debug"
   fi
 
-  local names=(first_rpc_server_rust first_rpc_client_rust)
+  local names=(first_rpc_server_rust first_rpc_client_rust first_rpc_mcp)
   local resolved=()
   local candidate
 

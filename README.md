@@ -16,6 +16,7 @@ This repository currently provides:
 - A shared protobuf contract under `proto/`
 - A C++ gRPC server and CLI client
 - A Rust gRPC server and CLI client
+- A Rust STDIO MCP server for Codex and other MCP clients
 - Supported actions:
   - `health_check`
   - `list_dir`
@@ -124,10 +125,11 @@ sudo ./install.sh --impl rust --build-type Debug
 
 ### Rust
 
-The repository also includes a Rust implementation under [rust/Cargo.toml](rust/Cargo.toml) that reuses the same protobuf contract and exposes matching executables with `_rust` suffixes:
+The repository also includes a Rust implementation under [rust/Cargo.toml](rust/Cargo.toml) that reuses the same protobuf contract and exposes these executables:
 
 - `first_rpc_server_rust`
 - `first_rpc_client_rust`
+- `first_rpc_mcp`
 
 Build it with Cargo:
 
@@ -166,6 +168,38 @@ To build and run Rust unit tests in one step:
 ```bash
 ./rust/build.sh --run-tests
 ```
+
+### STDIO MCP
+
+`first_rpc_mcp` keeps one gRPC client channel open and exposes the remote inspection actions over MCP STDIO. It calls first-rpc directly; PowerShell is not involved.
+
+Build it with the Rust binaries:
+
+```powershell
+.\rust\build.ps1 -BuildType Release
+```
+
+Configure the endpoint through environment variables so the token does not appear in the command line:
+
+```powershell
+$env:FIRST_RPC_HOST = "10.1.2.9"
+$env:FIRST_RPC_PORT = "18777"
+$env:FIRST_RPC_TOKEN = "your-token"
+```
+
+For Codex, add the STDIO server in `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.first_rpc]
+command = "C:\\my_proj\\first-rpc\\rust\\target\\release\\first_rpc_mcp.exe"
+env_vars = ["FIRST_RPC_TOKEN"]
+
+[mcp_servers.first_rpc.env]
+FIRST_RPC_HOST = "10.1.2.9"
+FIRST_RPC_PORT = "18777"
+```
+
+The server exposes `health_check`, `list_dir`, `read_file`, `tail_file`, `grep_file`, and `exec`. Remote paths remain relative to the first-rpc server root. `exec` is intended for trusted commands and is not a sandbox.
 
 ### Linux / macOS
 

@@ -54,7 +54,7 @@ function Resolve-RustBinaries {
     )
 
     $profileDir = if ($BuildType -eq "Debug") { "debug" } else { "release" }
-    $names = @("first_rpc_server_rust.exe", "first_rpc_client_rust.exe")
+    $names = @("first_rpc_server_rust.exe", "first_rpc_client_rust.exe", "first_rpc_mcp.exe")
     $resolved = @()
     foreach ($name in $names) {
         $candidate = Join-Path $RepoRoot "rust\target\$profileDir\$name"
